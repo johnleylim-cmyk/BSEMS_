@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../core/bracket_generator.dart';
+import '../core/constants.dart';
 import '../core/enums.dart';
 import '../models/match_model.dart';
 import '../services/firestore_service.dart';
@@ -12,26 +14,42 @@ class MatchProvider extends ChangeNotifier {
 
   List<MatchModel> _matches = [];
   bool _isLoading = false;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
   String? _error;
   StreamSubscription? _sub;
+  DocumentSnapshot? _lastDocument;
 
   List<MatchModel> get matches => _matches;
   bool get isLoading => _isLoading;
+  bool get isLoadingMore => _isLoadingMore;
+  bool get hasMore => _hasMore;
   String? get error => _error;
   int get count => _matches.length;
 
+  static const _pageSize = AppConstants.defaultPageSize;
+
   void startListening({String? tournamentId}) {
     _isLoading = true;
+    _hasMore = true;
+    _lastDocument = null;
     notifyListeners();
 
     _sub?.cancel();
     _sub = _service
-        .streamMatches(tournamentId: tournamentId)
+        .streamMatchesRaw(limit: _pageSize)
         .listen(
-          (data) {
-            _matches = data;
+          (snap) {
+            _matches = snap.docs
+                .map((doc) =>
+                    MatchModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+                .toList();
+            if (snap.docs.isNotEmpty) {
+              _lastDocument = snap.docs.last;
+            }
             _isLoading = false;
             _error = null;
+            _hasMore = snap.docs.length >= _pageSize;
             notifyListeners();
           },
           onError: (e) {
@@ -40,6 +58,32 @@ class MatchProvider extends ChangeNotifier {
             notifyListeners();
           },
         );
+  }
+
+  /// Load the next page of matches.
+  Future<void> loadMore() async {
+    if (_isLoadingMore || !_hasMore) return;
+    _isLoadingMore = true;
+    notifyListeners();
+
+    try {
+      final result = await _service.getMatchesPaginated(
+        startAfter: _lastDocument,
+        limit: _pageSize,
+      );
+      if (result.items.isNotEmpty) {
+        final existingIds = _matches.map((m) => m.id).toSet();
+        final newItems =
+            result.items.where((m) => !existingIds.contains(m.id)).toList();
+        _matches = [..._matches, ...newItems];
+        _lastDocument = result.lastDoc;
+      }
+      _hasMore = result.items.length >= _pageSize;
+    } catch (e) {
+      _error = e.toString();
+    }
+    _isLoadingMore = false;
+    notifyListeners();
   }
 
   void listenToTournamentMatches(String tournamentId) {

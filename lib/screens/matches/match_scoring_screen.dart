@@ -11,6 +11,7 @@ import '../../providers/team_provider.dart';
 import '../../widgets/avatar_badge.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/gradient_button.dart';
+import '../../widgets/breadcrumb_bar.dart';
 import 'package:go_router/go_router.dart';
 
 class MatchScoringScreen extends StatefulWidget {
@@ -99,12 +100,20 @@ class _MatchScoringScreenState extends State<MatchScoringScreen> {
     final team2Logo = teamProvider.getLogoForTeam(match.team2Id);
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppTheme.bg(context),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Breadcrumb navigation
+            BreadcrumbBar(items: [
+              const BreadcrumbItem(label: 'Dashboard', route: '/dashboard'),
+              const BreadcrumbItem(label: 'Matches', route: '/matches'),
+              BreadcrumbItem(label: 'Match #${match.matchNumber}'),
+            ]),
+            const SizedBox(height: 8),
+
             // Header
             Row(
               children: [

@@ -2,8 +2,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../app/theme.dart';
 
-/// A frosted-glass card with blur backdrop, gradient overlay, and subtle border.
-class GlassCard extends StatelessWidget {
+/// A frosted-glass card with blur backdrop, gradient overlay, subtle border,
+/// and premium hover effects (scale, glow, border shift).
+class GlassCard extends StatefulWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
   final double? width;
@@ -22,40 +23,86 @@ class GlassCard extends StatelessWidget {
   });
 
   @override
+  State<GlassCard> createState() => _GlassCardState();
+}
+
+class _GlassCardState extends State<GlassCard> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     final card = ClipRRect(
       borderRadius: BorderRadius.circular(AppTheme.radiusLg),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          width: width,
-          height: height,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          width: widget.width,
+          height: widget.height,
+          transform: _hovered
+              ? (Matrix4.identity()..setEntry(0, 0, 1.015)..setEntry(1, 1, 1.015))
+              : Matrix4.identity(),
+          transformAlignment: Alignment.center,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0x1AFFFFFF), Color(0x0DFFFFFF)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            gradient: isDark
+                ? const LinearGradient(
+                    colors: [Color(0x1AFFFFFF), Color(0x0DFFFFFF)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : const LinearGradient(
+                    colors: [Color(0xE6FFFFFF), Color(0xD9FFFFFF)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
             borderRadius: BorderRadius.circular(AppTheme.radiusLg),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.08),
+              color: _hovered
+                  ? AppTheme.accentCyan.withValues(alpha: 0.25)
+                  : (isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : AppTheme.lightBorder),
               width: 1,
             ),
-            boxShadow: glow ? AppTheme.glowShadow : AppTheme.cardShadow,
+            boxShadow: _hovered
+                ? [
+                    BoxShadow(
+                      color: AppTheme.accentCyan.withValues(alpha: 0.12),
+                      blurRadius: 24,
+                      spreadRadius: -2,
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : (widget.glow ? AppTheme.glowShadow : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]),
           ),
-          padding: padding ??
-              const EdgeInsets.all(AppTheme.spaceMd),
-          child: child,
+          padding: widget.padding ?? const EdgeInsets.all(AppTheme.spaceMd),
+          child: widget.child,
         ),
       ),
     );
 
-    if (onTap != null) {
-      return MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(onTap: onTap, child: card),
-      );
-    }
-    return card;
+    return MouseRegion(
+      cursor: widget.onTap != null
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: widget.onTap != null
+          ? GestureDetector(onTap: widget.onTap, child: card)
+          : card,
+    );
   }
 }

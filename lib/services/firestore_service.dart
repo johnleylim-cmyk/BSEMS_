@@ -9,6 +9,7 @@ import '../models/schedule_model.dart';
 import '../models/announcement_model.dart';
 import '../models/venue_model.dart';
 import '../models/leaderboard_entry_model.dart';
+import '../providers/activity_provider.dart';
 
 /// Central Firestore CRUD service for all collections.
 class FirestoreService {
@@ -30,13 +31,22 @@ class FirestoreService {
 
   Future<void> deleteAthlete(String id) => _athletes.doc(id).delete();
 
-  Stream<List<AthleteModel>> streamAthletes() {
-    return _athletes.orderBy('createdAt', descending: true).snapshots().map(
+  Stream<List<AthleteModel>> streamAthletes({int? limit}) {
+    Query query = _athletes.orderBy('createdAt', descending: true);
+    if (limit != null) query = query.limit(limit);
+    return query.snapshots().map(
           (snap) => snap.docs
               .map((doc) =>
                   AthleteModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
               .toList(),
         );
+  }
+
+  /// Raw snapshot stream for athletes (enables cursor tracking for pagination).
+  Stream<QuerySnapshot> streamAthletesRaw({int? limit}) {
+    Query query = _athletes.orderBy('createdAt', descending: true);
+    if (limit != null) query = query.limit(limit);
+    return query.snapshots();
   }
 
   Future<List<AthleteModel>> getAthletes() async {
@@ -45,6 +55,20 @@ class FirestoreService {
         .map((doc) =>
             AthleteModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
         .toList();
+  }
+
+  /// Paginated fetch for athletes.
+  Future<({List<AthleteModel> items, DocumentSnapshot? lastDoc})>
+      getAthletesPaginated({DocumentSnapshot? startAfter, int limit = 20}) async {
+    Query query = _athletes.orderBy('createdAt', descending: true).limit(limit);
+    if (startAfter != null) query = query.startAfterDocument(startAfter);
+    final snap = await query.get();
+    return (
+      items: snap.docs
+          .map((d) => AthleteModel.fromMap(d.data() as Map<String, dynamic>, d.id))
+          .toList(),
+      lastDoc: snap.docs.isNotEmpty ? snap.docs.last : null,
+    );
   }
 
   Future<AthleteModel?> getAthlete(String id) async {
@@ -69,8 +93,10 @@ class FirestoreService {
 
   Future<void> deleteTeam(String id) => _teams.doc(id).delete();
 
-  Stream<List<TeamModel>> streamTeams() {
-    return _teams.orderBy('createdAt', descending: true).snapshots().map(
+  Stream<List<TeamModel>> streamTeams({int? limit}) {
+    Query query = _teams.orderBy('createdAt', descending: true);
+    if (limit != null) query = query.limit(limit);
+    return query.snapshots().map(
           (snap) => snap.docs
               .map((doc) =>
                   TeamModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
@@ -84,6 +110,27 @@ class FirestoreService {
         .map((doc) =>
             TeamModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
         .toList();
+  }
+
+  /// Raw snapshot stream for teams (enables cursor tracking for pagination).
+  Stream<QuerySnapshot> streamTeamsRaw({int? limit}) {
+    Query query = _teams.orderBy('createdAt', descending: true);
+    if (limit != null) query = query.limit(limit);
+    return query.snapshots();
+  }
+
+  /// Paginated fetch for teams.
+  Future<({List<TeamModel> items, DocumentSnapshot? lastDoc})>
+      getTeamsPaginated({DocumentSnapshot? startAfter, int limit = 20}) async {
+    Query query = _teams.orderBy('createdAt', descending: true).limit(limit);
+    if (startAfter != null) query = query.startAfterDocument(startAfter);
+    final snap = await query.get();
+    return (
+      items: snap.docs
+          .map((d) => TeamModel.fromMap(d.data() as Map<String, dynamic>, d.id))
+          .toList(),
+      lastDoc: snap.docs.isNotEmpty ? snap.docs.last : null,
+    );
   }
 
   Future<TeamModel?> getTeam(String id) async {
@@ -266,17 +313,39 @@ class FirestoreService {
     });
   }
 
-  Stream<List<MatchModel>> streamMatches({String? tournamentId}) {
+  Stream<List<MatchModel>> streamMatches({String? tournamentId, int? limit}) {
     Query query = _matches;
     if (tournamentId != null) {
       query = query.where('tournamentId', isEqualTo: tournamentId);
     }
-    return query.orderBy('createdAt', descending: true).snapshots().map(
+    query = query.orderBy('createdAt', descending: true);
+    if (limit != null) query = query.limit(limit);
+    return query.snapshots().map(
           (snap) => snap.docs
               .map((doc) =>
                   MatchModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
               .toList(),
         );
+  }
+  /// Raw snapshot stream for matches (enables cursor tracking for pagination).
+  Stream<QuerySnapshot> streamMatchesRaw({int? limit}) {
+    Query query = _matches.orderBy('createdAt', descending: true);
+    if (limit != null) query = query.limit(limit);
+    return query.snapshots();
+  }
+
+  /// Paginated fetch for matches.
+  Future<({List<MatchModel> items, DocumentSnapshot? lastDoc})>
+      getMatchesPaginated({DocumentSnapshot? startAfter, int limit = 20}) async {
+    Query query = _matches.orderBy('createdAt', descending: true).limit(limit);
+    if (startAfter != null) query = query.startAfterDocument(startAfter);
+    final snap = await query.get();
+    return (
+      items: snap.docs
+          .map((d) => MatchModel.fromMap(d.data() as Map<String, dynamic>, d.id))
+          .toList(),
+      lastDoc: snap.docs.isNotEmpty ? snap.docs.last : null,
+    );
   }
 
   Stream<List<MatchModel>> streamMatchesByTournament(String tournamentId) {
@@ -358,16 +427,35 @@ class FirestoreService {
   Future<void> deleteAnnouncement(String id) =>
       _announcements.doc(id).delete();
 
-  Stream<List<AnnouncementModel>> streamAnnouncements() {
-    return _announcements
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map(
+  Stream<List<AnnouncementModel>> streamAnnouncements({int? limit}) {
+    Query query = _announcements.orderBy('createdAt', descending: true);
+    if (limit != null) query = query.limit(limit);
+    return query.snapshots().map(
           (snap) => snap.docs
               .map((doc) => AnnouncementModel.fromMap(
                   doc.data() as Map<String, dynamic>, doc.id))
               .toList(),
         );
+  }
+  /// Raw snapshot stream for announcements (enables cursor tracking for pagination).
+  Stream<QuerySnapshot> streamAnnouncementsRaw({int? limit}) {
+    Query query = _announcements.orderBy('createdAt', descending: true);
+    if (limit != null) query = query.limit(limit);
+    return query.snapshots();
+  }
+
+  /// Paginated fetch for announcements.
+  Future<({List<AnnouncementModel> items, DocumentSnapshot? lastDoc})>
+      getAnnouncementsPaginated({DocumentSnapshot? startAfter, int limit = 20}) async {
+    Query query = _announcements.orderBy('createdAt', descending: true).limit(limit);
+    if (startAfter != null) query = query.startAfterDocument(startAfter);
+    final snap = await query.get();
+    return (
+      items: snap.docs
+          .map((d) => AnnouncementModel.fromMap(d.data() as Map<String, dynamic>, d.id))
+          .toList(),
+      lastDoc: snap.docs.isNotEmpty ? snap.docs.last : null,
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -470,5 +558,39 @@ class FirestoreService {
       'sports': results[4].count ?? 0,
       'venues': results[5].count ?? 0,
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // ACTIVITY LOG
+  // ═══════════════════════════════════════════════════════════════════
+  CollectionReference get _activityLog =>
+      _db.collection(AppConstants.activityLogCollection);
+
+  /// Write a single activity log entry.
+  Future<void> logActivity({
+    required String type,
+    required String action,
+    required String title,
+    String? subtitle,
+  }) async {
+    await _activityLog.add({
+      'type': type,
+      'action': action,
+      'title': title,
+      'subtitle': subtitle,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Stream the most recent activity log entries.
+  Stream<List<ActivityItem>> streamActivityLog({int limit = 15}) {
+    return _activityLog
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => ActivityItem.fromMap(
+                doc.data() as Map<String, dynamic>, doc.id))
+            .toList());
   }
 }

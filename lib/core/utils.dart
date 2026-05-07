@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../widgets/premium_toast.dart';
 
 /// Utility helpers used across the BSEMS system.
 class AppUtils {
@@ -46,25 +47,15 @@ class AppUtils {
 
   // ── Snackbar helpers ────────────────────────────────────────────────
   static void showSuccess(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: const Color(0xFF00E676),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+    PremiumToast.showSuccess(context, message);
   }
 
   static void showError(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: const Color(0xFFFF5252),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+    PremiumToast.showError(context, message);
+  }
+
+  static void showInfo(BuildContext context, String message) {
+    PremiumToast.showInfo(context, message);
   }
 
   // ── Misc ────────────────────────────────────────────────────────────

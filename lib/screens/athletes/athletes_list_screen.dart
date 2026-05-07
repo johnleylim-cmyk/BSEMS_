@@ -16,6 +16,7 @@ import '../../widgets/shimmer_loader.dart';
 import '../../widgets/avatar_badge.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/search_bar_widget.dart';
+import '../../widgets/load_more_indicator.dart';
 
 class AthletesListScreen extends StatefulWidget {
   const AthletesListScreen({super.key});
@@ -25,7 +26,27 @@ class AthletesListScreen extends StatefulWidget {
 
 class _AthletesListScreenState extends State<AthletesListScreen> {
   final _searchCtrl = TextEditingController();
+  final _scrollCtrl = ScrollController();
   String _search = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollCtrl.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollCtrl.position.pixels >=
+        _scrollCtrl.position.maxScrollExtent - 200) {
+      context.read<AthleteProvider>().loadMore();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,8 +74,16 @@ class _AthletesListScreenState extends State<AthletesListScreen> {
                   : filtered.isEmpty
                       ? EmptyState(icon: Icons.people_outlined, title: 'No Athletes Found', subtitle: _search.isEmpty ? 'Add your first athlete to get started' : 'No athletes match your search', actionLabel: _search.isEmpty && auth.isManager ? 'Add Athlete' : null, onAction: _search.isEmpty && auth.isManager ? () => _showForm(context) : null)
                       : ListView.builder(
-                          itemCount: filtered.length,
+                          controller: _scrollCtrl,
+                          itemCount: filtered.length + 1,
                           itemBuilder: (context, i) {
+                            if (i == filtered.length) {
+                              return LoadMoreIndicator(
+                                isLoadingMore: provider.isLoadingMore,
+                                hasMore: provider.hasMore && _search.isEmpty,
+                                onLoadMore: () => provider.loadMore(),
+                              );
+                            }
                             final a = filtered[i];
                             return _AthleteCard(athlete: a, canManage: auth.isManager, onEdit: () => _showForm(context, athlete: a), onDelete: () => _confirmDelete(context, a))
                                 .animate(delay: Duration(milliseconds: i * 60))

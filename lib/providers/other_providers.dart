@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../core/constants.dart';
 import '../models/schedule_model.dart';
 import '../models/announcement_model.dart';
 import '../models/leaderboard_entry_model.dart';
@@ -42,24 +44,67 @@ class ScheduleProvider extends ChangeNotifier {
   }
 }
 
-/// Provider for announcements.
+/// Provider for announcements with pagination.
 class AnnouncementProvider extends ChangeNotifier {
   final FirestoreService _service = FirestoreService();
   List<AnnouncementModel> _announcements = [];
   bool _isLoading = false;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
   StreamSubscription? _sub;
+  DocumentSnapshot? _lastDocument;
+
+  static const _pageSize = AppConstants.defaultPageSize;
 
   List<AnnouncementModel> get announcements => _announcements;
   bool get isLoading => _isLoading;
+  bool get isLoadingMore => _isLoadingMore;
+  bool get hasMore => _hasMore;
 
   void startListening() {
     _isLoading = true;
+    _hasMore = true;
+    _lastDocument = null;
     notifyListeners();
-    _sub = _service.streamAnnouncements().listen((data) {
-      _announcements = data;
+    _sub?.cancel();
+    _sub = _service.streamAnnouncementsRaw(limit: _pageSize).listen((snap) {
+      _announcements = snap.docs
+          .map((doc) => AnnouncementModel.fromMap(
+              doc.data() as Map<String, dynamic>, doc.id))
+          .toList();
+      if (snap.docs.isNotEmpty) {
+        _lastDocument = snap.docs.last;
+      }
       _isLoading = false;
+      _hasMore = snap.docs.length >= _pageSize;
       notifyListeners();
     });
+  }
+
+  /// Load the next page of announcements.
+  Future<void> loadMore() async {
+    if (_isLoadingMore || !_hasMore) return;
+    _isLoadingMore = true;
+    notifyListeners();
+
+    try {
+      final result = await _service.getAnnouncementsPaginated(
+        startAfter: _lastDocument,
+        limit: _pageSize,
+      );
+      if (result.items.isNotEmpty) {
+        final existingIds = _announcements.map((a) => a.id).toSet();
+        final newItems =
+            result.items.where((a) => !existingIds.contains(a.id)).toList();
+        _announcements = [..._announcements, ...newItems];
+        _lastDocument = result.lastDoc;
+      }
+      _hasMore = result.items.length >= _pageSize;
+    } catch (e) {
+      // Non-critical
+    }
+    _isLoadingMore = false;
+    notifyListeners();
   }
 
   Future<String> addAnnouncement(AnnouncementModel a) =>
@@ -69,6 +114,12 @@ class AnnouncementProvider extends ChangeNotifier {
       _service.updateAnnouncement(id, data);
 
   Future<void> deleteAnnouncement(String id) => _service.deleteAnnouncement(id);
+
+  /// How many announcements were created after [lastSeen].
+  int unreadCount(DateTime? lastSeen) {
+    if (lastSeen == null) return _announcements.length;
+    return _announcements.where((a) => a.createdAt.isAfter(lastSeen)).length;
+  }
 
   @override
   void dispose() {

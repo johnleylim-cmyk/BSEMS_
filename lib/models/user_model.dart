@@ -8,6 +8,7 @@ class UserModel {
   final String displayName;
   final UserRole role;
   final String? photoUrl;
+  final DateTime? lastSeenAnnouncementsAt;
   final DateTime createdAt;
 
   const UserModel({
@@ -16,6 +17,7 @@ class UserModel {
     required this.displayName,
     required this.role,
     this.photoUrl,
+    this.lastSeenAnnouncementsAt,
     required this.createdAt,
   });
 
@@ -29,6 +31,8 @@ class UserModel {
         orElse: () => UserRole.viewer,
       ),
       photoUrl: map['photoUrl'],
+      lastSeenAnnouncementsAt:
+          (map['lastSeenAnnouncementsAt'] as Timestamp?)?.toDate(),
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
@@ -47,6 +51,7 @@ class UserModel {
     String? displayName,
     UserRole? role,
     String? photoUrl,
+    DateTime? lastSeenAnnouncementsAt,
   }) {
     return UserModel(
       uid: uid,
@@ -54,6 +59,8 @@ class UserModel {
       displayName: displayName ?? this.displayName,
       role: role ?? this.role,
       photoUrl: photoUrl ?? this.photoUrl,
+      lastSeenAnnouncementsAt:
+          lastSeenAnnouncementsAt ?? this.lastSeenAnnouncementsAt,
       createdAt: createdAt,
     );
   }

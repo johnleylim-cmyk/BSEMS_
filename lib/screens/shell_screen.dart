@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../app/theme.dart';
 import '../core/enums.dart';
 import '../providers/auth_provider.dart';
+import '../providers/other_providers.dart';
 import '../widgets/sidebar_nav.dart';
 import '../widgets/responsive_layout.dart';
+import '../widgets/theme_toggle_button.dart';
 
 /// Shell screen — wraps all authenticated routes with sidebar + bottom nav.
 class ShellScreen extends StatelessWidget {
@@ -117,12 +120,16 @@ class ShellScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final currentRoute = GoRouterState.of(context).matchedLocation;
     final authProvider = context.watch<AuthProvider>();
+    final announcementProvider = context.watch<AnnouncementProvider>();
     final filteredNavItems = _filterNavItems(authProvider.user?.role);
+    final unread = announcementProvider.unreadCount(
+      authProvider.lastSeenAnnouncementsAt,
+    );
 
     return ResponsiveLayout(
       // ── Desktop: Sidebar + Content ──
       desktop: Scaffold(
-        backgroundColor: AppTheme.background,
+        backgroundColor: AppTheme.bg(context),
         body: Row(
           children: [
             SidebarNav(
@@ -132,13 +139,43 @@ class ShellScreen extends StatelessWidget {
               onLogout: () => _handleLogout(context, authProvider),
             ),
             Expanded(
-              child: Container(
-                decoration: const BoxDecoration(
-                  border: Border(
-                    left: BorderSide(color: AppTheme.border, width: 0.5),
+              child: Column(
+                children: [
+                  // ── Top bar with notification bell + theme toggle ──
+                  Container(
+                    height: 56,
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    decoration: BoxDecoration(
+                      color: AppTheme.sfc(context).withValues(alpha: 0.5),
+                      border: Border(
+                        bottom: BorderSide(color: AppTheme.brd(context), width: 0.5),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Spacer(),
+                        const ThemeToggleButton(),
+                        const SizedBox(width: 12),
+                        _NotificationBell(
+                          unreadCount: unread,
+                          onTap: () => context.go('/announcements'),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                    ),
                   ),
-                ),
-                child: child,
+                  Expanded(
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          left: BorderSide(
+                              color: AppTheme.border, width: 0.5),
+                        ),
+                      ),
+                      child: child,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -147,7 +184,22 @@ class ShellScreen extends StatelessWidget {
 
       // ── Mobile: Bottom Nav + Content ──
       mobile: Scaffold(
-        backgroundColor: AppTheme.background,
+        backgroundColor: AppTheme.bg(context),
+        appBar: AppBar(
+          backgroundColor: AppTheme.sfc(context),
+          elevation: 0,
+          title: const Text('BSEMS',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          actions: [
+            const ThemeToggleButton(),
+            const SizedBox(width: 8),
+            _NotificationBell(
+              unreadCount: unread,
+              onTap: () => context.go('/announcements'),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
         body: child,
         bottomNavigationBar: Container(
           decoration: BoxDecoration(
@@ -244,5 +296,65 @@ class ShellScreen extends StatelessWidget {
       await auth.signOut();
       if (context.mounted) context.go('/login');
     }
+  }
+}
+
+/// Notification bell icon with animated badge.
+class _NotificationBell extends StatelessWidget {
+  final int unreadCount;
+  final VoidCallback onTap;
+
+  const _NotificationBell({required this.unreadCount, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: 'Announcements',
+      icon: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Icon(
+            unreadCount > 0
+                ? Icons.notifications_active
+                : Icons.notifications_outlined,
+            color:
+                unreadCount > 0 ? AppTheme.accentOrange : AppTheme.textMuted,
+            size: 24,
+          ),
+          if (unreadCount > 0)
+            Positioned(
+              right: -6,
+              top: -4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: AppTheme.accentRed,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.accentRed.withValues(alpha: 0.5),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                constraints:
+                    const BoxConstraints(minWidth: 18, minHeight: 14),
+                child: Center(
+                  child: Text(
+                    unreadCount > 99 ? '99+' : '$unreadCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ).animate(onPlay: (c) => c.repeat(reverse: true))
+                  .scaleXY(begin: 1.0, end: 1.15, duration: 800.ms),
+            ),
+        ],
+      ),
+      onPressed: onTap,
+    );
   }
 }

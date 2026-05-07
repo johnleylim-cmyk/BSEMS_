@@ -10,6 +10,8 @@ import 'providers/team_provider.dart';
 import 'providers/tournament_provider.dart';
 import 'providers/match_provider.dart';
 import 'providers/other_providers.dart';
+import 'providers/theme_provider.dart';
+import 'providers/activity_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,14 +53,20 @@ class BSEMSApp extends StatelessWidget {
           create: (_) => LeaderboardProvider()..startListening(),
         ),
         ChangeNotifierProvider(create: (_) => DashboardProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(
+          create: (_) => ActivityProvider()..startListening(),
+        ),
       ],
-      child: Consumer<AuthProvider>(
-        builder: (context, authProvider, _) {
+      child: Consumer2<AuthProvider, ThemeProvider>(
+        builder: (context, authProvider, themeProvider, _) {
           final router = createRouter(authProvider);
           return MaterialApp.router(
             title: 'BSEMS — Barangay Sports & Esports Management',
             debugShowCheckedModeBanner: false,
-            theme: AppTheme.darkTheme,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeProvider.themeMode,
             routerConfig: router,
           );
         },

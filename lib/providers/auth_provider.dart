@@ -103,10 +103,50 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Send password-reset email.
+  Future<bool> resetPassword(String email) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      await _authService.sendPasswordResetEmail(email);
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _error = _mapAuthError(e.code);
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _error = e.toString();
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   /// Clear error.
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  /// Timestamp of the last time the user viewed announcements.
+  DateTime? get lastSeenAnnouncementsAt => _user?.lastSeenAnnouncementsAt;
+
+  /// Mark announcements as seen — updates Firestore and local state.
+  Future<void> markAnnouncementsSeen() async {
+    if (_user == null) return;
+    final now = DateTime.now();
+    _user = _user!.copyWith(lastSeenAnnouncementsAt: now);
+    notifyListeners();
+    try {
+      await _authService.updateLastSeenAnnouncements(_user!.uid);
+    } catch (_) {
+      // Non-critical — badge will correct on next login
+    }
   }
 
   String _mapAuthError(String code) {

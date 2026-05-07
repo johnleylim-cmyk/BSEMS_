@@ -9,6 +9,7 @@ import '../../providers/athlete_provider.dart';
 import '../../providers/team_provider.dart';
 import '../../providers/tournament_provider.dart';
 import '../../providers/match_provider.dart';
+import '../../providers/activity_provider.dart';
 import '../../widgets/stat_tile.dart';
 import '../../widgets/glass_card.dart';
 import '../../core/utils.dart';
@@ -39,7 +40,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final announcements = context.watch<AnnouncementProvider>();
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppTheme.bg(context),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -112,6 +113,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
             // Recent Announcements
             _buildRecentAnnouncements(context, announcements),
+
+            const SizedBox(height: 28),
+
+            // Activity Feed
+            _buildActivityFeed(context),
           ],
         ),
       ),
@@ -222,5 +228,133 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
     ).animate().fadeIn(delay: 600.ms, duration: 600.ms);
+  }
+
+  Widget _buildActivityFeed(BuildContext context) {
+    final activityProvider = context.watch<ActivityProvider>();
+    final activities = activityProvider.activities;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.timeline, color: AppTheme.accentPurple, size: 20),
+              const SizedBox(width: 8),
+              Text('Recent Activity', style: Theme.of(context).textTheme.headlineSmall),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text('Latest system events', style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 16),
+          if (activityProvider.isLoading && activities.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (activities.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text(
+                  'No activity recorded yet',
+                  style: TextStyle(
+                    color: isDark ? AppTheme.textMuted : AppTheme.lightTextMuted,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            )
+          else
+            ...activities.take(10).toList().asMap().entries.map((entry) {
+              final i = entry.key;
+              final activity = entry.value;
+              final isLast = i == (activities.length - 1).clamp(0, 9);
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Timeline connector
+                  SizedBox(
+                    width: 32,
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: activity.color.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(activity.icon, size: 14, color: activity.color),
+                        ),
+                        if (!isLast)
+                          Container(
+                            width: 2,
+                            height: 32,
+                            color: isDark
+                                ? AppTheme.border.withValues(alpha: 0.5)
+                                : AppTheme.lightBorder,
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            activity.title,
+                            style: TextStyle(
+                              color: isDark ? AppTheme.textPrimary : AppTheme.lightTextPrimary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: activity.color.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  activity.actionLabel,
+                                  style: TextStyle(
+                                    color: activity.color,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                AppUtils.timeAgo(activity.createdAt),
+                                style: TextStyle(
+                                  color: isDark ? AppTheme.textMuted : AppTheme.lightTextMuted,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }),
+        ],
+      ),
+    ).animate().fadeIn(delay: 700.ms, duration: 600.ms);
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -15,6 +16,9 @@ import '../../providers/auth_provider.dart';
 import '../../widgets/avatar_badge.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/gradient_button.dart';
+import '../../widgets/bracket_tree_view.dart';
+import '../../widgets/breadcrumb_bar.dart';
+import '../../widgets/confetti_overlay.dart';
 
 class TournamentDetailScreen extends StatefulWidget {
   final String tournamentId;
@@ -25,6 +29,7 @@ class TournamentDetailScreen extends StatefulWidget {
 
 class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
   MatchProvider? _matchProvider;
+  bool _confettiShown = false;
 
   @override
   void didChangeDependencies() {
@@ -76,23 +81,26 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
             if (roundOrder != 0) return roundOrder;
             return a.matchNumber.compareTo(b.matchNumber);
           });
-    final rounds = <int>{};
-    for (final m in matches) {
-      rounds.add(m.round);
-    }
-    final sortedRounds = rounds.toList()..sort();
     final championHighlight = _resolveChampionHighlight(
       matches,
       tournament.format,
     );
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppTheme.bg(context),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Breadcrumb
+            BreadcrumbBar(items: [
+              const BreadcrumbItem(label: 'Dashboard', route: '/dashboard'),
+              const BreadcrumbItem(label: 'Tournaments', route: '/tournaments'),
+              BreadcrumbItem(label: tournament.name),
+            ]),
+            const SizedBox(height: 8),
+
             // Header
             Row(
               children: [
@@ -156,6 +164,12 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
                     icon: Icons.account_tree,
                     onPressed: () => _generateBracket(context, tournament),
                   ),
+                if (matches.isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  _ShareBracketButton(
+                    tournamentId: widget.tournamentId,
+                  ),
+                ],
               ],
             ).animate().fadeIn(),
 
@@ -264,6 +278,14 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
                 _ChampionBanner(
                   tournamentName: tournament.name,
                   highlight: championHighlight,
+                  onFirstBuild: () {
+                    if (!_confettiShown) {
+                      _confettiShown = true;
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) ConfettiOverlay.show(context);
+                      });
+                    }
+                  },
                 ).animate().fadeIn(delay: 260.ms).slideY(begin: 0.04),
                 const SizedBox(height: 20),
               ],
@@ -277,58 +299,14 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
               if (tournament.format == TournamentFormat.doubleElimination) ...[
                 _buildDoubleEliminationBracket(matches, auth.isManager),
               ] else ...[
-                // Single elimination and round robin use a flat round layout.
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: sortedRounds.map((round) {
-                      final roundMatches =
-                          matches.where((m) => m.round == round).toList()..sort(
-                            (a, b) => a.matchNumber.compareTo(b.matchNumber),
-                          );
-                      return Container(
-                        width: 260,
-                        margin: const EdgeInsets.only(right: 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppTheme.accentCyan.withValues(
-                                  alpha: 0.1,
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                round == sortedRounds.last
-                                    ? 'Finals'
-                                    : 'Round $round',
-                                style: const TextStyle(
-                                  color: AppTheme.accentCyan,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            ...roundMatches.map(
-                              (m) => _BracketMatchCard(
-                                match: m,
-                                canManage: auth.isManager,
-                                onScore: () => _scoreMatch(context, m),
-                                team1Logo: context.read<TeamProvider>().getLogoForTeam(m.team1Id),
-                                team2Logo: context.read<TeamProvider>().getLogoForTeam(m.team2Id),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
+                // Single elimination and round robin use the bracket tree view.
+                Padding(
+                  padding: const EdgeInsets.only(top: 28),
+                  child: BracketTreeView(
+                    matches: matches.where((m) => m.bracketType != BracketTypes.roundRobin).toList(),
+                    canManage: auth.isManager,
+                    accentColor: AppTheme.accentCyan,
+                    onScore: (m) => _scoreMatch(context, m),
                   ),
                 ),
               ],
@@ -434,7 +412,15 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
             color: AppTheme.accentCyan,
           ),
           const SizedBox(height: 12),
-          _buildBracketSection(winnersMatches, canManage, AppTheme.accentCyan),
+          Padding(
+            padding: const EdgeInsets.only(top: 28),
+            child: BracketTreeView(
+              matches: winnersMatches,
+              canManage: canManage,
+              accentColor: AppTheme.accentCyan,
+              onScore: (m) => _scoreMatch(context, m),
+            ),
+          ),
           const SizedBox(height: 28),
         ],
 
@@ -444,7 +430,15 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
             color: AppTheme.accentOrange,
           ),
           const SizedBox(height: 12),
-          _buildBracketSection(losersMatches, canManage, AppTheme.accentOrange),
+          Padding(
+            padding: const EdgeInsets.only(top: 28),
+            child: BracketTreeView(
+              matches: losersMatches,
+              canManage: canManage,
+              accentColor: AppTheme.accentOrange,
+              onScore: (m) => _scoreMatch(context, m),
+            ),
+          ),
           const SizedBox(height: 28),
         ],
 
@@ -454,19 +448,27 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
             color: AppTheme.accentPurple,
           ),
           const SizedBox(height: 12),
-          ...grandFinalsMatches.map(
-            (m) => _BracketMatchCard(
-              match: m,
+          Padding(
+            padding: const EdgeInsets.only(top: 28),
+            child: BracketTreeView(
+              matches: grandFinalsMatches,
               canManage: canManage,
-              onScore: () => _scoreMatch(context, m),
-              team1Logo: context.read<TeamProvider>().getLogoForTeam(m.team1Id),
-              team2Logo: context.read<TeamProvider>().getLogoForTeam(m.team2Id),
+              accentColor: AppTheme.accentPurple,
+              onScore: (m) => _scoreMatch(context, m),
             ),
           ),
         ],
 
         if (untaggedMatches.isNotEmpty) ...[
-          _buildBracketSection(untaggedMatches, canManage, AppTheme.accentCyan),
+          Padding(
+            padding: const EdgeInsets.only(top: 28),
+            child: BracketTreeView(
+              matches: untaggedMatches,
+              canManage: canManage,
+              accentColor: AppTheme.accentCyan,
+              onScore: (m) => _scoreMatch(context, m),
+            ),
+          ),
         ],
       ],
     );
@@ -540,68 +542,6 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
       matchLabel: format == TournamentFormat.doubleElimination
           ? 'Grand Finals'
           : 'Championship Final',
-    );
-  }
-
-  Widget _buildBracketSection(
-    List<MatchModel> sectionMatches,
-    bool canManage,
-    Color accentColor,
-  ) {
-    final rounds = <int>{};
-    for (final m in sectionMatches) {
-      rounds.add(m.round);
-    }
-    final sortedRounds = rounds.toList()..sort();
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: sortedRounds.map((round) {
-          final roundMatches =
-              sectionMatches.where((m) => m.round == round).toList()
-                ..sort((a, b) => a.matchNumber.compareTo(b.matchNumber));
-          final roundIndex = sortedRounds.indexOf(round) + 1;
-          return Container(
-            width: 260,
-            margin: const EdgeInsets.only(right: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: accentColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    round == sortedRounds.last ? 'Final' : 'Round $roundIndex',
-                    style: TextStyle(
-                      color: accentColor,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                ...roundMatches.map(
-                  (m) => _BracketMatchCard(
-                    match: m,
-                    canManage: canManage,
-                    onScore: () => _scoreMatch(context, m),
-                    team1Logo: context.read<TeamProvider>().getLogoForTeam(m.team1Id),
-                    team2Logo: context.read<TeamProvider>().getLogoForTeam(m.team2Id),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-      ),
     );
   }
 
@@ -1005,14 +945,17 @@ class _ChampionHighlight {
 class _ChampionBanner extends StatelessWidget {
   final String tournamentName;
   final _ChampionHighlight highlight;
+  final VoidCallback? onFirstBuild;
 
   const _ChampionBanner({
     required this.tournamentName,
     required this.highlight,
+    this.onFirstBuild,
   });
 
   @override
   Widget build(BuildContext context) {
+    onFirstBuild?.call();
     final titleStyle = Theme.of(context).textTheme.displaySmall;
 
     return GlassCard(
@@ -1434,6 +1377,74 @@ class _BracketSectionHeader extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Share bracket button — copies public bracket URL to clipboard.
+class _ShareBracketButton extends StatefulWidget {
+  final String tournamentId;
+  const _ShareBracketButton({required this.tournamentId});
+
+  @override
+  State<_ShareBracketButton> createState() => _ShareBracketButtonState();
+}
+
+class _ShareBracketButtonState extends State<_ShareBracketButton> {
+  bool _hovered = false;
+
+  void _copyLink() {
+    final url = Uri.base.resolve('/bracket/${widget.tournamentId}').toString();
+    Clipboard.setData(ClipboardData(text: url));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Bracket link copied to clipboard!'),
+          backgroundColor: AppTheme.accentGreen,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: _copyLink,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: _hovered
+                ? AppTheme.accentCyan.withValues(alpha: 0.15)
+                : AppTheme.accentCyan.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            border: Border.all(
+              color: AppTheme.accentCyan.withValues(alpha: _hovered ? 0.4 : 0.2),
+            ),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.share_outlined, size: 16, color: AppTheme.accentCyan),
+              SizedBox(width: 6),
+              Text(
+                'Share Bracket',
+                style: TextStyle(
+                  color: AppTheme.accentCyan,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

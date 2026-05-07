@@ -199,6 +199,184 @@ class AppTheme {
         ),
         textStyle: GoogleFonts.inter(fontSize: 12, color: textPrimary),
       ),
+      scrollbarTheme: const ScrollbarThemeData(
+        thickness: WidgetStatePropertyAll(6),
+        radius: Radius.circular(3),
+        thumbVisibility: WidgetStatePropertyAll(true),
+      ),
     );
   }
+
+  // ── Light Color Palette ──────────────────────────────────────────────
+  static const Color lightBackground = Color(0xFFF5F7FA);
+  static const Color lightSurface = Color(0xFFFFFFFF);
+  static const Color lightSurfaceLight = Color(0xFFF0F2F5);
+  static const Color lightCard = Color(0xFFFFFFFF);
+  static const Color lightBorder = Color(0xFFE0E4EA);
+  static const Color lightTextPrimary = Color(0xFF1A1D2E);
+  static const Color lightTextSecondary = Color(0xFF5A6178);
+  static const Color lightTextMuted = Color(0xFF9098AD);
+
+  static const LinearGradient lightSidebarGradient = LinearGradient(
+    colors: [Color(0xFFF8F9FC), Color(0xFFEEF0F5)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+
+  // ── Light Theme Data ────────────────────────────────────────────────
+  static ThemeData get lightTheme {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      scaffoldBackgroundColor: lightBackground,
+      colorScheme: const ColorScheme.light(
+        primary: accentCyan,
+        secondary: accentPurple,
+        surface: lightSurface,
+        error: accentRed,
+        onPrimary: Color(0xFF000000),
+        onSecondary: Color(0xFF000000),
+        onSurface: lightTextPrimary,
+        onError: Color(0xFFFFFFFF),
+      ),
+      textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme).copyWith(
+        displayLarge: GoogleFonts.outfit(
+            fontSize: 36, fontWeight: FontWeight.w700, color: lightTextPrimary),
+        displayMedium: GoogleFonts.outfit(
+            fontSize: 28, fontWeight: FontWeight.w700, color: lightTextPrimary),
+        displaySmall: GoogleFonts.outfit(
+            fontSize: 24, fontWeight: FontWeight.w600, color: lightTextPrimary),
+        headlineLarge: GoogleFonts.outfit(
+            fontSize: 22, fontWeight: FontWeight.w600, color: lightTextPrimary),
+        headlineMedium: GoogleFonts.outfit(
+            fontSize: 20, fontWeight: FontWeight.w600, color: lightTextPrimary),
+        headlineSmall: GoogleFonts.outfit(
+            fontSize: 18, fontWeight: FontWeight.w600, color: lightTextPrimary),
+        titleLarge: GoogleFonts.inter(
+            fontSize: 16, fontWeight: FontWeight.w600, color: lightTextPrimary),
+        titleMedium: GoogleFonts.inter(
+            fontSize: 14, fontWeight: FontWeight.w500, color: lightTextPrimary),
+        titleSmall: GoogleFonts.inter(
+            fontSize: 12, fontWeight: FontWeight.w500, color: lightTextSecondary),
+        bodyLarge: GoogleFonts.inter(fontSize: 16, color: lightTextPrimary),
+        bodyMedium: GoogleFonts.inter(fontSize: 14, color: lightTextSecondary),
+        bodySmall: GoogleFonts.inter(fontSize: 12, color: lightTextMuted),
+        labelLarge: GoogleFonts.inter(
+            fontSize: 14, fontWeight: FontWeight.w600, color: lightTextPrimary),
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: GoogleFonts.outfit(
+            fontSize: 22, fontWeight: FontWeight.w600, color: lightTextPrimary),
+      ),
+      cardTheme: CardThemeData(
+        color: lightCard,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusMd),
+          side: const BorderSide(color: lightBorder, width: 1),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: lightSurfaceLight,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusMd),
+          borderSide: const BorderSide(color: lightBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusMd),
+          borderSide: const BorderSide(color: lightBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusMd),
+          borderSide: const BorderSide(color: accentCyan, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusMd),
+          borderSide: const BorderSide(color: accentRed),
+        ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        hintStyle: GoogleFonts.inter(color: lightTextMuted, fontSize: 14),
+        labelStyle: GoogleFonts.inter(color: lightTextSecondary, fontSize: 14),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: accentCyan,
+          foregroundColor: Colors.black,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(radiusMd)),
+          textStyle:
+              GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: accentCyan,
+          side: const BorderSide(color: accentCyan),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(radiusMd)),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: lightSurfaceLight,
+        selectedColor: accentCyan.withValues(alpha: 0.2),
+        labelStyle: GoogleFonts.inter(fontSize: 12, color: lightTextPrimary),
+        side: const BorderSide(color: lightBorder),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusSm)),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: lightSurface,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radiusLg)),
+      ),
+      dividerTheme: const DividerThemeData(color: lightBorder, thickness: 1),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: lightSurface,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radiusMd)),
+      ),
+      tooltipTheme: TooltipThemeData(
+        decoration: BoxDecoration(
+          color: lightSurfaceLight,
+          borderRadius: BorderRadius.circular(radiusSm),
+          border: Border.all(color: lightBorder),
+        ),
+        textStyle: GoogleFonts.inter(fontSize: 12, color: lightTextPrimary),
+      ),
+      scrollbarTheme: const ScrollbarThemeData(
+        thickness: WidgetStatePropertyAll(6),
+        radius: Radius.circular(3),
+        thumbVisibility: WidgetStatePropertyAll(true),
+      ),
+    );
+  }
+
+  // ── Theme-aware helpers ──────────────────────────────────────────────
+  /// Returns context-appropriate colors based on current brightness.
+  static Color bg(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? background : lightBackground;
+  static Color sfc(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? surface : lightSurface;
+  static Color sfcLight(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? surfaceLight : lightSurfaceLight;
+  static Color crd(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? card : lightCard;
+  static Color brd(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? border : lightBorder;
+  static Color txtPrimary(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? textPrimary : lightTextPrimary;
+  static Color txtSecondary(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? textSecondary : lightTextSecondary;
+  static Color txtMuted(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? textMuted : lightTextMuted;
+  static LinearGradient sidebarGrad(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? sidebarGradient : lightSidebarGradient;
 }

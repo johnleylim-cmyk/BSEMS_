@@ -6,6 +6,7 @@ import '../../app/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/gradient_button.dart';
 import '../../core/utils.dart';
+import 'forgot_password_dialog.dart';
 
 /// Premium animated login screen.
 class LoginScreen extends StatefulWidget {
@@ -40,6 +41,15 @@ class _LoginScreenState extends State<LoginScreen> {
     } else if (mounted && auth.error != null) {
       AppUtils.showError(context, auth.error!);
     }
+  }
+
+  void _showForgotPasswordDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => ForgotPasswordDialog(
+        initialEmail: _emailCtrl.text.trim(),
+      ),
+    );
   }
 
   @override
@@ -159,6 +169,24 @@ class _LoginScreenState extends State<LoginScreen> {
                             isLoading: auth.isLoading,
                             onPressed: _submit,
                             width: double.infinity,
+                          ),
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onTap: _showForgotPasswordDialog,
+                                child: const Text(
+                                  'Forgot Password?',
+                                  style: TextStyle(
+                                    color: AppTheme.accentPurple,
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         ],
                       ),

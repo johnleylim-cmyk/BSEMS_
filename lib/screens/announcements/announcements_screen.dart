@@ -10,8 +10,21 @@ import '../../providers/other_providers.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/gradient_button.dart';
 
-class AnnouncementsScreen extends StatelessWidget {
+class AnnouncementsScreen extends StatefulWidget {
   const AnnouncementsScreen({super.key});
+  @override
+  State<AnnouncementsScreen> createState() => _AnnouncementsScreenState();
+}
+
+class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AuthProvider>().markAnnouncementsSeen();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<AnnouncementProvider>();

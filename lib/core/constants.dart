@@ -18,6 +18,7 @@ class AppConstants {
   static const String venuesCollection = 'venues';
   static const String leaderboardCollection = 'leaderboard_entries';
   static const String settingsCollection = 'settings';
+  static const String activityLogCollection = 'activity_log';
 
   // Storage paths
   static const String athletePhotosPath = 'athlete_photos';

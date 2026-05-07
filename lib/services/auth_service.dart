@@ -111,11 +111,24 @@ class AuthService {
         .toList();
   }
 
+  /// Send a password-reset email.
+  Future<void> sendPasswordResetEmail(String email) async {
+    await _auth.sendPasswordResetEmail(email: email);
+  }
+
   /// Update a user's role (admin only).
   Future<void> updateUserRole(String uid, UserRole role) async {
     await _db
         .collection(AppConstants.usersCollection)
         .doc(uid)
         .update({'role': role.name});
+  }
+
+  /// Mark the current moment as the last time the user viewed announcements.
+  Future<void> updateLastSeenAnnouncements(String uid) async {
+    await _db
+        .collection(AppConstants.usersCollection)
+        .doc(uid)
+        .update({'lastSeenAnnouncementsAt': FieldValue.serverTimestamp()});
   }
 }

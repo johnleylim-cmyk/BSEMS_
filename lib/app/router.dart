@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 import '../screens/auth/login_screen.dart';
@@ -8,6 +9,7 @@ import '../screens/athletes/athletes_list_screen.dart';
 import '../screens/teams/teams_list_screen.dart';
 import '../screens/tournaments/tournaments_list_screen.dart';
 import '../screens/tournaments/tournament_detail_screen.dart';
+import '../screens/tournaments/public_bracket_screen.dart';
 import '../screens/matches/matches_list_screen.dart';
 import '../screens/matches/match_scoring_screen.dart';
 import '../screens/sports/sports_screen.dart';
@@ -24,7 +26,44 @@ const _managerRoutes = ['/sports', '/venues', '/reports'];
 /// Routes that require admin role.
 const _adminRoutes = ['/settings'];
 
-/// GoRouter configuration with auth + role-guarded routes.
+/// Routes that are publicly accessible (no auth required).
+const _publicRoutes = ['/login', '/register', '/bracket'];
+
+/// Custom fade-slide page transition for premium feel.
+CustomTransitionPage<void> _buildTransitionPage({
+  required GoRouterState state,
+  required Widget child,
+}) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 300),
+    reverseTransitionDuration: const Duration(milliseconds: 250),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final fadeAnimation = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOut,
+      );
+      final slideAnimation = Tween<Offset>(
+        begin: const Offset(0.02, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      ));
+
+      return FadeTransition(
+        opacity: fadeAnimation,
+        child: SlideTransition(
+          position: slideAnimation,
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
+/// GoRouter configuration with auth + role-guarded routes and page transitions.
 GoRouter createRouter(AuthProvider authProvider) {
   return GoRouter(
     initialLocation: '/dashboard',
@@ -33,12 +72,16 @@ GoRouter createRouter(AuthProvider authProvider) {
       final isAuth = authProvider.isAuthenticated;
       final location = state.matchedLocation;
       final isAuthRoute = location == '/login' || location == '/register';
+      final isPublicRoute = _publicRoutes.any((r) => location.startsWith(r));
 
-      // 1. Auth guard — block unauthenticated users
+      // 1. Allow public routes through
+      if (isPublicRoute && !isAuthRoute) return null;
+
+      // 2. Auth guard — block unauthenticated users
       if (!isAuth && !isAuthRoute) return '/login';
       if (isAuth && isAuthRoute) return '/dashboard';
 
-      // 2. Role guard — block unauthorized role access
+      // 3. Role guard — block unauthorized role access
       if (isAuth) {
         // Admin-only routes
         if (_adminRoutes.any((r) => location.startsWith(r)) &&
@@ -58,11 +101,28 @@ GoRouter createRouter(AuthProvider authProvider) {
       // ── Auth routes (no shell) ──
       GoRoute(
         path: '/login',
-        builder: (context, state) => const LoginScreen(),
+        pageBuilder: (context, state) => _buildTransitionPage(
+          state: state,
+          child: const LoginScreen(),
+        ),
       ),
       GoRoute(
         path: '/register',
-        builder: (context, state) => const RegisterScreen(),
+        pageBuilder: (context, state) => _buildTransitionPage(
+          state: state,
+          child: const RegisterScreen(),
+        ),
+      ),
+
+      // ── Public bracket view (no auth, no shell) ──
+      GoRoute(
+        path: '/bracket/:id',
+        pageBuilder: (context, state) => _buildTransitionPage(
+          state: state,
+          child: PublicBracketScreen(
+            tournamentId: state.pathParameters['id']!,
+          ),
+        ),
       ),
 
       // ── Main app (with shell/sidebar) ──
@@ -71,63 +131,105 @@ GoRouter createRouter(AuthProvider authProvider) {
         routes: [
           GoRoute(
             path: '/dashboard',
-            builder: (context, state) => const DashboardScreen(),
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: const DashboardScreen(),
+            ),
           ),
           GoRoute(
             path: '/athletes',
-            builder: (context, state) => const AthletesListScreen(),
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: const AthletesListScreen(),
+            ),
           ),
           GoRoute(
             path: '/teams',
-            builder: (context, state) => const TeamsListScreen(),
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: const TeamsListScreen(),
+            ),
           ),
           GoRoute(
             path: '/tournaments',
-            builder: (context, state) => const TournamentsListScreen(),
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: const TournamentsListScreen(),
+            ),
           ),
           GoRoute(
             path: '/tournaments/:id',
-            builder: (context, state) => TournamentDetailScreen(
-              tournamentId: state.pathParameters['id']!,
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: TournamentDetailScreen(
+                tournamentId: state.pathParameters['id']!,
+              ),
             ),
           ),
           GoRoute(
             path: '/matches',
-            builder: (context, state) => const MatchesListScreen(),
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: const MatchesListScreen(),
+            ),
           ),
           GoRoute(
             path: '/matches/:id/score',
-            builder: (context, state) => MatchScoringScreen(
-              matchId: state.pathParameters['id']!,
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: MatchScoringScreen(
+                matchId: state.pathParameters['id']!,
+              ),
             ),
           ),
           GoRoute(
             path: '/sports',
-            builder: (context, state) => const SportsScreen(),
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: const SportsScreen(),
+            ),
           ),
           GoRoute(
             path: '/venues',
-            builder: (context, state) => const VenuesScreen(),
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: const VenuesScreen(),
+            ),
           ),
           GoRoute(
             path: '/schedule',
-            builder: (context, state) => const ScheduleScreen(),
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: const ScheduleScreen(),
+            ),
           ),
           GoRoute(
             path: '/announcements',
-            builder: (context, state) => const AnnouncementsScreen(),
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: const AnnouncementsScreen(),
+            ),
           ),
           GoRoute(
             path: '/leaderboards',
-            builder: (context, state) => const LeaderboardsScreen(),
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: const LeaderboardsScreen(),
+            ),
           ),
           GoRoute(
             path: '/settings',
-            builder: (context, state) => const SettingsScreen(),
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: const SettingsScreen(),
+            ),
           ),
           GoRoute(
             path: '/reports',
-            builder: (context, state) => const ReportsScreen(),
+            pageBuilder: (context, state) => _buildTransitionPage(
+              state: state,
+              child: const ReportsScreen(),
+            ),
           ),
         ],
       ),
