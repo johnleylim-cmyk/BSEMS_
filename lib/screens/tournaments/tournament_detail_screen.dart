@@ -9,6 +9,7 @@ import '../../core/enums.dart';
 import '../../core/utils.dart';
 import '../../models/tournament_model.dart';
 import '../../models/match_model.dart';
+import '../../models/team_model.dart';
 import '../../providers/tournament_provider.dart';
 import '../../providers/match_provider.dart';
 import '../../providers/team_provider.dart';
@@ -157,12 +158,19 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
                     ],
                   ),
                 ),
-                if (tournament.status == TournamentStatus.draft &&
-                    auth.isManager)
+                if (auth.isManager &&
+                    (tournament.status == TournamentStatus.draft ||
+                        matches.isNotEmpty))
                   GradientButton(
-                    label: 'Generate Bracket',
-                    icon: Icons.account_tree,
-                    onPressed: () => _generateBracket(context, tournament),
+                    label: matches.isEmpty
+                        ? 'Generate Bracket'
+                        : 'Regenerate Bracket',
+                    icon: matches.isEmpty ? Icons.account_tree : Icons.refresh,
+                    onPressed: () => _generateBracket(
+                      context,
+                      tournament,
+                      existingMatches: matches,
+                    ),
                   ),
                 if (matches.isNotEmpty) ...[
                   const SizedBox(width: 12),
@@ -295,22 +303,8 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
               ).animate().fadeIn(delay: 300.ms),
               const SizedBox(height: 16),
 
-              // Check if this is a double elimination tournament
-              if (tournament.format == TournamentFormat.doubleElimination) ...[
-                _buildDoubleEliminationBracket(matches, auth.isManager),
-              ] else ...[
-                // Single elimination and round robin use the bracket tree view.
-                Padding(
-                  padding: const EdgeInsets.only(top: 28),
-                  child: BracketTreeView(
-                    matches: matches.where((m) => m.bracketType != BracketTypes.roundRobin).toList(),
-                    canManage: auth.isManager,
-                    accentColor: AppTheme.accentCyan,
-                    onScore: (m) => _scoreMatch(context, m),
-                  ),
-                ),
-              ],
               if (tournament.format == TournamentFormat.roundRobin) ...[
+                _buildRoundRobinSchedule(matches, auth.isManager),
                 const SizedBox(height: 28),
                 Text(
                   'Standings',
@@ -318,6 +312,20 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
                 ),
                 const SizedBox(height: 12),
                 _buildRoundRobinStandings(matches),
+              ] else if (tournament.format == TournamentFormat.doubleElimination) ...[
+                _buildDoubleEliminationBracket(matches, auth.isManager),
+              ] else ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 28),
+                  child: BracketTreeView(
+                    matches: matches
+                        .where((m) => m.bracketType != BracketTypes.roundRobin)
+                        .toList(),
+                    canManage: auth.isManager,
+                    accentColor: AppTheme.accentCyan,
+                    onScore: (m) => _scoreMatch(context, m),
+                  ),
+                ),
               ],
             ] else if (tournament.status == TournamentStatus.draft) ...[
               const EmptyBracketState(),
@@ -340,7 +348,9 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
         .where((m) => m.bracketType == BracketTypes.losers)
         .toList();
     final grandFinalsMatches = matches
-        .where((m) => m.bracketType == BracketTypes.grandFinals)
+        .where((m) =>
+            m.bracketType == BracketTypes.grandFinals ||
+            m.bracketType == BracketTypes.grandFinalsReset)
         .toList();
     // Fallback: if no bracketType is set, show all matches flat
     final untaggedMatches = matches
@@ -484,17 +494,28 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
 
     MatchModel? championshipMatch;
     if (format == TournamentFormat.doubleElimination) {
-      final grandFinals =
-          matches
-              .where((match) => match.bracketType == BracketTypes.grandFinals)
-              .toList()
-            ..sort((a, b) {
-              final roundOrder = a.round.compareTo(b.round);
-              if (roundOrder != 0) return roundOrder;
-              return a.matchNumber.compareTo(b.matchNumber);
-            });
-      if (grandFinals.isNotEmpty) {
-        championshipMatch = grandFinals.last;
+      final firstFinals = matches
+          .where((match) => match.bracketType == BracketTypes.grandFinals)
+          .toList()
+        ..sort((a, b) {
+          final roundOrder = a.round.compareTo(b.round);
+          if (roundOrder != 0) return roundOrder;
+          return a.matchNumber.compareTo(b.matchNumber);
+        });
+      final resetFinals = matches
+          .where((match) => match.bracketType == BracketTypes.grandFinalsReset)
+          .toList()
+        ..sort((a, b) {
+          final roundOrder = a.round.compareTo(b.round);
+          if (roundOrder != 0) return roundOrder;
+          return a.matchNumber.compareTo(b.matchNumber);
+        });
+      if (firstFinals.isNotEmpty &&
+          firstFinals.first.status == MatchStatus.completed &&
+          firstFinals.first.winnerId == firstFinals.first.team1Id) {
+        championshipMatch = firstFinals.first;
+      } else if (resetFinals.isNotEmpty) {
+        championshipMatch = resetFinals.first;
       }
     } else {
       final eliminationMatches =
@@ -540,8 +561,60 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
           ? championshipMatch.score2
           : championshipMatch.score1,
       matchLabel: format == TournamentFormat.doubleElimination
-          ? 'Grand Finals'
+          ? (championshipMatch.bracketType == BracketTypes.grandFinalsReset
+              ? 'Bracket Reset Final'
+              : 'Grand Finals')
           : 'Championship Final',
+    );
+  }
+
+  Widget _buildRoundRobinSchedule(List<MatchModel> matches, bool canManage) {
+    final rounds = <int, List<MatchModel>>{};
+    for (final match in matches) {
+      rounds.putIfAbsent(match.round, () => []).add(match);
+    }
+    final sortedRounds = rounds.keys.toList()..sort();
+
+    if (sortedRounds.isEmpty) {
+      return const Text(
+        'Round-robin matches will appear after bracket generation.',
+        style: TextStyle(color: AppTheme.textMuted),
+      );
+    }
+
+    final teamProvider = context.read<TeamProvider>();
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final round in sortedRounds)
+            Container(
+              width: 280,
+              margin: const EdgeInsets.only(right: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _BracketSectionHeader(
+                    label: 'Round $round',
+                    color: AppTheme.accentCyan,
+                  ),
+                  const SizedBox(height: 12),
+                  for (final match in rounds[round]!..sort(
+                      (a, b) => a.matchNumber.compareTo(b.matchNumber),
+                    ))
+                    _BracketMatchCard(
+                      match: match,
+                      canManage: canManage,
+                      onScore: () => _scoreMatch(context, match),
+                      team1Logo: teamProvider.getLogoForTeam(match.team1Id),
+                      team2Logo: teamProvider.getLogoForTeam(match.team2Id),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -653,54 +726,101 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
     );
   }
 
-  void _generateBracket(BuildContext context, TournamentModel tournament) {
-    final teams = context
-        .read<TeamProvider>()
-        .teams
+  Future<void> _generateBracket(
+    BuildContext context,
+    TournamentModel tournament, {
+    List<MatchModel> existingMatches = const [],
+  }) async {
+    late final List<TeamModel> teams;
+    try {
+      teams = await context.read<TeamProvider>().fetchAllTeams();
+    } catch (e) {
+      if (context.mounted) AppUtils.showError(context, e.toString());
+      return;
+    }
+    if (!context.mounted) return;
+
+    final eligibleTeams = teams
         .where(
           (team) =>
               tournament.sportId.isEmpty || team.sportId == tournament.sportId,
         )
         .toList();
-    final selectedIds = <String>[];
-    final selectedNames = <String>[];
+    final existingTeamIds = tournament.teamIds.toSet();
+    final selectedIds = <String>[
+      for (final team in eligibleTeams)
+        if (existingTeamIds.contains(team.id)) team.id,
+    ];
+    final selectedNames = <String>[
+      for (final team in eligibleTeams)
+        if (existingTeamIds.contains(team.id)) team.name,
+    ];
+    final isRegenerating = existingMatches.isNotEmpty;
+    final hasLockedMatches = existingMatches.any(
+      (match) =>
+          match.status == MatchStatus.live ||
+          match.status == MatchStatus.completed,
+    );
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Select Teams for Bracket'),
+          title: Text(
+            isRegenerating
+                ? 'Regenerate Tournament Bracket'
+                : 'Select Teams for Bracket',
+          ),
           content: SizedBox(
             width: 400,
             height: 400,
-            child: teams.isEmpty
+            child: eligibleTeams.isEmpty
                 ? const Center(
                     child: Text('No eligible teams for this tournament sport.'),
                   )
-                : ListView.builder(
-                    itemCount: teams.length,
-                    itemBuilder: (_, i) {
-                      final t = teams[i];
-                      final isSelected = selectedIds.contains(t.id);
-                      return CheckboxListTile(
-                        value: isSelected,
-                        title: Text(t.name),
-                        onChanged: (v) {
-                          setDialogState(() {
-                            if (v == true) {
-                              selectedIds.add(t.id);
-                              selectedNames.add(t.name);
-                            } else {
-                              final idx = selectedIds.indexOf(t.id);
-                              if (idx >= 0) {
-                                selectedIds.removeAt(idx);
-                                selectedNames.removeAt(idx);
-                              }
-                            }
-                          });
-                        },
-                      );
-                    },
+                : Column(
+                    children: [
+                      if (isRegenerating)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            hasLockedMatches
+                                ? 'Regenerating will replace existing matches and recorded results.'
+                                : 'Regenerating will replace the current generated matches.',
+                            style: const TextStyle(
+                              color: AppTheme.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: eligibleTeams.length,
+                          itemBuilder: (_, i) {
+                            final t = eligibleTeams[i];
+                            final isSelected = selectedIds.contains(t.id);
+                            return CheckboxListTile(
+                              value: isSelected,
+                              title: Text(t.name),
+                              onChanged: (v) {
+                                setDialogState(() {
+                                  if (v == true) {
+                                    selectedIds.add(t.id);
+                                    selectedNames.add(t.name);
+                                  } else {
+                                    final idx = selectedIds.indexOf(t.id);
+                                    if (idx >= 0) {
+                                      selectedIds.removeAt(idx);
+                                      selectedNames.removeAt(idx);
+                                    }
+                                  }
+                                });
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
           ),
           actions: [
@@ -711,11 +831,38 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
             ElevatedButton(
               onPressed: selectedIds.length >= 2
                   ? () async {
-                      Navigator.pop(ctx);
                       final matchProvider = context.read<MatchProvider>();
+                      final tournamentProvider = context.read<TournamentProvider>();
+                      Navigator.pop(ctx);
+                      if (hasLockedMatches) {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (confirmCtx) => AlertDialog(
+                            title: const Text('Replace Existing Results?'),
+                            content: const Text(
+                              'This will delete the current generated matches and create a fresh bracket.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.pop(confirmCtx, false),
+                                child: const Text('Cancel'),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.accentRed,
+                                ),
+                                onPressed: () =>
+                                    Navigator.pop(confirmCtx, true),
+                                child: const Text('Replace'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true) return;
+                      }
                       try {
-                        await context
-                            .read<TournamentProvider>()
+                        await tournamentProvider
                             .generateBracket(
                               tournamentId: widget.tournamentId,
                               teamIds: selectedIds,
@@ -729,7 +876,12 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
                               },
                             );
                         if (context.mounted) {
-                          AppUtils.showSuccess(context, 'Bracket generated!');
+                          AppUtils.showSuccess(
+                            context,
+                            isRegenerating
+                                ? 'Bracket regenerated!'
+                                : 'Bracket generated!',
+                          );
                         }
                       } catch (e) {
                         matchProvider.listenToTournamentMatches(
@@ -741,7 +893,9 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
                       }
                     }
                   : null,
-              child: Text('Generate (${selectedIds.length} teams)'),
+              child: Text(
+                '${isRegenerating ? 'Regenerate' : 'Generate'} (${selectedIds.length} teams)',
+              ),
             ),
           ],
         ),
@@ -750,10 +904,6 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
   }
 
   void _scoreMatch(BuildContext context, MatchModel match) {
-    if (match.status == MatchStatus.completed) {
-      AppUtils.showError(context, 'Completed matches cannot be edited');
-      return;
-    }
     if (match.team1Id == null || match.team2Id == null) {
       AppUtils.showError(
         context,
@@ -761,6 +911,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
       );
       return;
     }
+    final allowCompletedEdit = context.read<AuthProvider>().isManager;
 
     final s1Ctrl = TextEditingController(text: '${match.score1}');
     final s2Ctrl = TextEditingController(text: '${match.score2}');
@@ -774,7 +925,11 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Update Score'),
+        title: Text(
+          match.status == MatchStatus.completed
+              ? 'Correct Result'
+              : 'Update Score',
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -838,6 +993,22 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Cancel'),
           ),
+          if (match.status == MatchStatus.scheduled)
+            TextButton.icon(
+              onPressed: () async {
+                try {
+                  await context.read<MatchProvider>().startMatch(match.id);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (context.mounted) {
+                    AppUtils.showSuccess(context, 'Match started');
+                  }
+                } catch (e) {
+                  if (context.mounted) AppUtils.showError(context, e.toString());
+                }
+              },
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Start'),
+            ),
           OutlinedButton(
             onPressed: () async {
               final s1 = readScore(s1Ctrl);
@@ -851,6 +1022,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
                   match.id,
                   s1,
                   s2,
+                  allowCompletedEdit: allowCompletedEdit,
                 );
                 if (ctx.mounted) Navigator.pop(ctx);
               } catch (e) {
@@ -891,6 +1063,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
                   s1,
                   s2,
                   winnerId,
+                  allowCompletedEdit: allowCompletedEdit,
                 );
                 if (ctx.mounted) {
                   Navigator.pop(ctx);
@@ -902,7 +1075,11 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
                 if (context.mounted) AppUtils.showError(context, e.toString());
               }
             },
-            child: const Text('Complete Match'),
+            child: Text(
+              match.status == MatchStatus.completed
+                  ? 'Update Result'
+                  : 'Complete Match',
+            ),
           ),
         ],
       ),
@@ -1188,7 +1365,7 @@ class _BracketMatchCard extends StatelessWidget {
     final isLive = match.status == MatchStatus.live;
     final isWaiting = match.team1Id == null || match.team2Id == null;
     return GestureDetector(
-      onTap: canManage && !isCompleted && !isWaiting ? onScore : null,
+      onTap: canManage && !isWaiting ? onScore : null,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(12),

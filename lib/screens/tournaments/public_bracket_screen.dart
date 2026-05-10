@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -26,55 +28,81 @@ class _PublicBracketScreenState extends State<PublicBracketScreen> {
   TournamentModel? _tournament;
   List<MatchModel> _matches = [];
   bool _loading = true;
+  bool _tournamentLoaded = false;
+  bool _matchesLoaded = false;
   String? _error;
+  StreamSubscription? _tournamentSub;
+  StreamSubscription? _matchesSub;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _listenToData();
   }
 
-  Future<void> _loadData() async {
-    try {
-      final tournamentDoc = await _db
-          .collection(AppConstants.tournamentsCollection)
-          .doc(widget.tournamentId)
-          .get();
+  @override
+  void dispose() {
+    _tournamentSub?.cancel();
+    _matchesSub?.cancel();
+    super.dispose();
+  }
 
+  void _listenToData() {
+    _tournamentSub = _db
+        .collection(AppConstants.tournamentsCollection)
+        .doc(widget.tournamentId)
+        .snapshots()
+        .listen((tournamentDoc) {
       if (!tournamentDoc.exists) {
         setState(() {
           _error = 'Tournament not found';
           _loading = false;
+          _tournamentLoaded = true;
         });
         return;
       }
 
-      _tournament = TournamentModel.fromMap(
-        tournamentDoc.data() as Map<String, dynamic>,
-        tournamentDoc.id,
-      );
+      setState(() {
+        _tournament = TournamentModel.fromMap(
+          tournamentDoc.data() as Map<String, dynamic>,
+          tournamentDoc.id,
+        );
+        _tournamentLoaded = true;
+        _loading = !(_tournamentLoaded && _matchesLoaded);
+        _error = null;
+      });
+    }, onError: (e) {
+      setState(() {
+        _error = 'Failed to load tournament: $e';
+        _loading = false;
+      });
+    });
 
-      final matchSnap = await _db
-          .collection(AppConstants.matchesCollection)
-          .where('tournamentId', isEqualTo: widget.tournamentId)
-          .get();
-
-      _matches = matchSnap.docs
-          .map((doc) =>
-              MatchModel.fromMap(doc.data(), doc.id))
+    _matchesSub = _db
+        .collection(AppConstants.matchesCollection)
+        .where('tournamentId', isEqualTo: widget.tournamentId)
+        .snapshots()
+        .listen((matchSnap) {
+      final matches = matchSnap.docs
+          .map((doc) => MatchModel.fromMap(doc.data(), doc.id))
           .toList()
         ..sort((a, b) {
           final r = a.round.compareTo(b.round);
           return r != 0 ? r : a.matchNumber.compareTo(b.matchNumber);
         });
 
-      setState(() => _loading = false);
-    } catch (e) {
+      setState(() {
+        _matches = matches;
+        _matchesLoaded = true;
+        _loading = !(_tournamentLoaded && _matchesLoaded);
+        _error = null;
+      });
+    }, onError: (e) {
       setState(() {
         _error = 'Failed to load bracket: $e';
         _loading = false;
       });
-    }
+    });
   }
 
   void _copyShareLink() {
@@ -262,6 +290,19 @@ class _PublicBracketScreenState extends State<PublicBracketScreen> {
   }
 
   Widget _buildBracket() {
+    if (_tournament!.format == TournamentFormat.roundRobin) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildRoundRobinSchedule(),
+          const SizedBox(height: 28),
+          _sectionHeader('Standings', AppTheme.accentCyan),
+          const SizedBox(height: 12),
+          _buildRoundRobinStandings(),
+        ],
+      );
+    }
+
     if (_tournament!.format == TournamentFormat.doubleElimination) {
       final winnersMatches = _matches
           .where((m) => m.bracketType == BracketTypes.winners)
@@ -270,7 +311,9 @@ class _PublicBracketScreenState extends State<PublicBracketScreen> {
           .where((m) => m.bracketType == BracketTypes.losers)
           .toList();
       final grandFinalsMatches = _matches
-          .where((m) => m.bracketType == BracketTypes.grandFinals)
+          .where((m) =>
+              m.bracketType == BracketTypes.grandFinals ||
+              m.bracketType == BracketTypes.grandFinalsReset)
           .toList();
 
       return Column(
@@ -322,6 +365,133 @@ class _PublicBracketScreenState extends State<PublicBracketScreen> {
     );
   }
 
+  Widget _buildRoundRobinSchedule() {
+    final rounds = <int, List<MatchModel>>{};
+    for (final match in _matches) {
+      rounds.putIfAbsent(match.round, () => []).add(match);
+    }
+    final sortedRounds = rounds.keys.toList()..sort();
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final round in sortedRounds)
+            Container(
+              width: 260,
+              margin: const EdgeInsets.only(right: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _sectionHeader('Round $round', AppTheme.accentCyan),
+                  const SizedBox(height: 12),
+                  for (final match in rounds[round]!..sort(
+                      (a, b) => a.matchNumber.compareTo(b.matchNumber),
+                    ))
+                    _PublicMatchCard(match: match),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoundRobinStandings() {
+    final standings = <String, _PublicStanding>{};
+
+    void ensureTeam(String? id, String? name) {
+      if (id == null || name == null || name == 'TBD' || name == 'BYE') return;
+      standings.putIfAbsent(id, () => _PublicStanding(name));
+    }
+
+    for (final match in _matches) {
+      ensureTeam(match.team1Id, match.team1Name);
+      ensureTeam(match.team2Id, match.team2Name);
+      if (match.status != MatchStatus.completed ||
+          match.team1Id == null ||
+          match.team2Id == null) {
+        continue;
+      }
+
+      final team1 = standings[match.team1Id]!;
+      final team2 = standings[match.team2Id]!;
+      team1.played++;
+      team2.played++;
+      team1.pointsFor += match.score1;
+      team1.pointsAgainst += match.score2;
+      team2.pointsFor += match.score2;
+      team2.pointsAgainst += match.score1;
+
+      if (match.score1 == match.score2) {
+        team1.draws++;
+        team2.draws++;
+      } else if (match.score1 > match.score2) {
+        team1.wins++;
+        team2.losses++;
+      } else {
+        team2.wins++;
+        team1.losses++;
+      }
+    }
+
+    final rows = standings.values.toList()
+      ..sort((a, b) {
+        final points = b.points.compareTo(a.points);
+        if (points != 0) return points;
+        final diff = b.differential.compareTo(a.differential);
+        if (diff != 0) return diff;
+        return b.wins.compareTo(a.wins);
+      });
+
+    return GlassCard(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columnSpacing: 24,
+          headingTextStyle: const TextStyle(
+            color: AppTheme.textMuted,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+          dataTextStyle: const TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 13,
+          ),
+          columns: const [
+            DataColumn(label: Text('Team')),
+            DataColumn(label: Text('P')),
+            DataColumn(label: Text('W')),
+            DataColumn(label: Text('D')),
+            DataColumn(label: Text('L')),
+            DataColumn(label: Text('Diff')),
+            DataColumn(label: Text('Pts')),
+          ],
+          rows: [
+            for (final row in rows)
+              DataRow(
+                cells: [
+                  DataCell(Text(row.name)),
+                  DataCell(Text('${row.played}')),
+                  DataCell(Text('${row.wins}')),
+                  DataCell(Text('${row.draws}')),
+                  DataCell(Text('${row.losses}')),
+                  DataCell(Text('${row.differential}')),
+                  DataCell(
+                    Text(
+                      '${row.points}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _sectionHeader(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -348,4 +518,120 @@ class _PublicBracketScreenState extends State<PublicBracketScreen> {
       ),
     );
   }
+}
+
+class _PublicMatchCard extends StatelessWidget {
+  final MatchModel match;
+
+  const _PublicMatchCard({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    final isCompleted = match.status == MatchStatus.completed;
+    final statusColor = match.status == MatchStatus.live
+        ? AppTheme.accentGreen
+        : match.status == MatchStatus.cancelled
+            ? AppTheme.textMuted
+            : AppTheme.accentCyan;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.card,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        children: [
+          _PublicTeamRow(
+            name: match.team1Name ?? 'TBD',
+            score: match.score1,
+            isWinner: isCompleted && match.winnerId == match.team1Id,
+          ),
+          const Divider(height: 16),
+          _PublicTeamRow(
+            name: match.team2Name ?? 'TBD',
+            score: match.score2,
+            isWinner: isCompleted && match.winnerId == match.team2Id,
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                match.status.label,
+                style: TextStyle(
+                  color: statusColor,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PublicTeamRow extends StatelessWidget {
+  final String name;
+  final int score;
+  final bool isWinner;
+
+  const _PublicTeamRow({
+    required this.name,
+    required this.score,
+    required this.isWinner,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isWinner ? AppTheme.accentGreen : AppTheme.textPrimary,
+              fontSize: 13,
+              fontWeight: isWinner ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '$score',
+          style: TextStyle(
+            color: isWinner ? AppTheme.accentGreen : AppTheme.textSecondary,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PublicStanding {
+  final String name;
+  int played = 0;
+  int wins = 0;
+  int draws = 0;
+  int losses = 0;
+  int pointsFor = 0;
+  int pointsAgainst = 0;
+
+  _PublicStanding(this.name);
+
+  int get points => wins * 3 + draws;
+  int get differential => pointsFor - pointsAgainst;
 }

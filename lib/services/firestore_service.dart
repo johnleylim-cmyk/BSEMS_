@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../core/bracket_generator.dart';
 import '../core/constants.dart';
+import '../core/enums.dart';
 import '../models/athlete_model.dart';
 import '../models/team_model.dart';
 import '../models/sport_model.dart';
@@ -243,6 +245,33 @@ class FirestoreService {
 
   Future<void> deleteMatch(String id) => _matches.doc(id).delete();
 
+  Future<void> deleteMatchAndSyncBracket(MatchModel match) async {
+    if (match.tournamentId == null) {
+      await deleteMatch(match.id);
+      return;
+    }
+
+    final tournamentRef = _tournaments.doc(match.tournamentId);
+    await _db.runTransaction((transaction) async {
+      final tournamentSnap = await transaction.get(tournamentRef);
+      transaction.delete(_matches.doc(match.id));
+
+      if (!tournamentSnap.exists) return;
+      final data = tournamentSnap.data() as Map<String, dynamic>?;
+      final rawBracket = data?['bracket'] as List<dynamic>?;
+      if (rawBracket == null) return;
+
+      final bracket = rawBracket
+          .map((entry) => Map<String, dynamic>.from(entry as Map))
+          .where((entry) => entry['matchId'] != match.id)
+          .toList();
+      transaction.update(tournamentRef, {
+        'bracket': bracket,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
   Future<void> replaceTournamentMatches({
     required String tournamentId,
     required List<MatchModel> matches,
@@ -304,13 +333,97 @@ class FirestoreService {
         return map;
       }).toList();
 
+      final tournamentUpdate = <String, dynamic>{};
       if (changed) {
-        transaction.update(tournamentRef, {
+        tournamentUpdate.addAll({
           'bracket': bracket,
           'updatedAt': FieldValue.serverTimestamp(),
         });
       }
+
+      final nextStatus = _resolveTournamentStatus(
+        formatName: data?['format'] as String?,
+        bracket: bracket,
+      );
+      if (nextStatus != null && data?['status'] != nextStatus) {
+        tournamentUpdate['status'] = nextStatus;
+        tournamentUpdate['updatedAt'] = FieldValue.serverTimestamp();
+      }
+
+      if (tournamentUpdate.isNotEmpty) {
+        transaction.update(tournamentRef, tournamentUpdate);
+      }
     });
+  }
+
+  String? _resolveTournamentStatus({
+    required String? formatName,
+    required List<Map<String, dynamic>> bracket,
+  }) {
+    if (bracket.isEmpty) return null;
+
+    bool isCompleted(Map<String, dynamic> match) =>
+        match['status'] == MatchStatus.completed.name &&
+        match['winnerId'] != null;
+
+    if (formatName == TournamentFormat.roundRobin.name ||
+        bracket.every(
+          (match) => match['bracketType'] == BracketTypes.roundRobin,
+        )) {
+      return bracket.every(
+        (match) => match['status'] == MatchStatus.completed.name,
+      )
+          ? TournamentStatus.completed.name
+          : TournamentStatus.active.name;
+    }
+
+    if (formatName == TournamentFormat.doubleElimination.name) {
+      final firstFinals = bracket
+          .where((match) => match['bracketType'] == BracketTypes.grandFinals)
+          .toList()
+        ..sort(_compareBracketMatches);
+      final resetFinals = bracket
+          .where(
+            (match) => match['bracketType'] == BracketTypes.grandFinalsReset,
+          )
+          .toList()
+        ..sort(_compareBracketMatches);
+
+      if (firstFinals.isEmpty || !isCompleted(firstFinals.first)) {
+        return TournamentStatus.active.name;
+      }
+
+      final firstFinal = firstFinals.first;
+      if (firstFinal['winnerId'] == firstFinal['team1Id']) {
+        return TournamentStatus.completed.name;
+      }
+
+      if (resetFinals.isNotEmpty && isCompleted(resetFinals.first)) {
+        return TournamentStatus.completed.name;
+      }
+
+      return TournamentStatus.active.name;
+    }
+
+    final eliminationMatches = bracket
+        .where((match) => match['bracketType'] != BracketTypes.roundRobin)
+        .toList()
+      ..sort(_compareBracketMatches);
+    if (eliminationMatches.isEmpty) return null;
+
+    return isCompleted(eliminationMatches.last)
+        ? TournamentStatus.completed.name
+        : TournamentStatus.active.name;
+  }
+
+  int _compareBracketMatches(Map<String, dynamic> a, Map<String, dynamic> b) {
+    final roundOrder = ((a['round'] as num?) ?? 0).compareTo(
+      (b['round'] as num?) ?? 0,
+    );
+    if (roundOrder != 0) return roundOrder;
+    return ((a['matchNumber'] as num?) ?? 0).compareTo(
+      (b['matchNumber'] as num?) ?? 0,
+    );
   }
 
   Stream<List<MatchModel>> streamMatches({String? tournamentId, int? limit}) {

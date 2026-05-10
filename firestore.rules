@@ -24,6 +24,11 @@ service cloud.firestore {
       return isAuthenticated() && (getUserRole() == 'admin' || getUserRole() == 'manager');
     }
 
+    function isPublicTournament(tournamentId) {
+      return exists(/databases/$(database)/documents/tournaments/$(tournamentId)) &&
+        get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.status in ['active', 'completed'];
+    }
+
     // ── Users ──
     match /users/{uid} {
       allow read: if isAuthenticated();
@@ -52,13 +57,13 @@ service cloud.firestore {
 
     // ── Tournaments ──
     match /tournaments/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() || resource.data.status in ['active', 'completed'];
       allow create, update, delete: if isManager();
     }
 
     // ── Matches ──
     match /matches/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() || isPublicTournament(resource.data.tournamentId);
       allow create, update, delete: if isManager();
     }
 

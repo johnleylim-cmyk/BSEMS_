@@ -99,6 +99,21 @@ class TeamProvider extends ChangeNotifier {
     }
   }
 
+  Future<List<TeamModel>> fetchAllTeams() async {
+    try {
+      final teams = await _service.getTeams();
+      _teams = teams;
+      _hasMore = false;
+      _error = null;
+      notifyListeners();
+      return teams;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   Future<void> updateTeam(String id, Map<String, dynamic> data) async {
     try {
       await _service.updateTeam(id, data);

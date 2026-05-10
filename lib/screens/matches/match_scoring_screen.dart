@@ -351,9 +351,9 @@ class _MatchScoringScreenState extends State<MatchScoringScreen> {
             const SizedBox(height: 32),
 
             // Scoring Controls (Manager+ only)
-            if (auth.isManager && !isCompleted && hasTeams) ...[
+            if (auth.isManager && hasTeams) ...[
               Text(
-                'Update Score',
+                isCompleted ? 'Correct Result' : 'Update Score',
                 style: Theme.of(context).textTheme.headlineMedium,
               ).animate().fadeIn(delay: 300.ms),
               const SizedBox(height: 16),
@@ -434,6 +434,22 @@ class _MatchScoringScreenState extends State<MatchScoringScreen> {
                     const SizedBox(height: 24),
                     Row(
                       children: [
+                        if (!isCompleted && match.status == MatchStatus.scheduled) ...[
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _saving
+                                  ? null
+                                  : () => _startMatch(context),
+                              icon: const Icon(Icons.play_arrow),
+                              label: const Text('Start'),
+                              style: OutlinedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                        ],
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: _saving
@@ -449,7 +465,8 @@ class _MatchScoringScreenState extends State<MatchScoringScreen> {
                         const SizedBox(width: 16),
                         Expanded(
                           child: GradientButton(
-                            label: 'Complete Match',
+                            label:
+                                isCompleted ? 'Update Result' : 'Complete Match',
                             icon: Icons.check_circle,
                             isLoading: _saving,
                             onPressed: () => _completeMatch(context),
@@ -533,8 +550,25 @@ class _MatchScoringScreenState extends State<MatchScoringScreen> {
 
     setState(() => _saving = true);
     try {
-      await context.read<MatchProvider>().updateScore(widget.matchId, s1, s2);
+      await context.read<MatchProvider>().updateScore(
+        widget.matchId,
+        s1,
+        s2,
+        allowCompletedEdit: match.status == MatchStatus.completed,
+      );
       if (context.mounted) AppUtils.showSuccess(context, 'Score saved');
+    } catch (e) {
+      if (context.mounted) AppUtils.showError(context, e.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _startMatch(BuildContext context) async {
+    setState(() => _saving = true);
+    try {
+      await context.read<MatchProvider>().startMatch(widget.matchId);
+      if (context.mounted) AppUtils.showSuccess(context, 'Match started');
     } catch (e) {
       if (context.mounted) AppUtils.showError(context, e.toString());
     } finally {
@@ -575,6 +609,7 @@ class _MatchScoringScreenState extends State<MatchScoringScreen> {
         s1,
         s2,
         winnerId,
+        allowCompletedEdit: match.status == MatchStatus.completed,
       );
       if (context.mounted) AppUtils.showSuccess(context, 'Match completed!');
     } catch (e) {

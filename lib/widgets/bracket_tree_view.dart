@@ -297,7 +297,7 @@ class _DefaultBracketCard extends StatelessWidget {
     final isWaiting = match.team1Id == null || match.team2Id == null;
 
     return GestureDetector(
-      onTap: canManage && !isCompleted && !isWaiting ? onScore : null,
+      onTap: canManage && !isWaiting ? onScore : null,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(

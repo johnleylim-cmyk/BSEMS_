@@ -81,11 +81,15 @@ void main() {
     final grandFinal = specs.singleWhere(
       (match) => match.bracketType == BracketTypes.grandFinals,
     );
+    final resetFinal = specs.singleWhere(
+      (match) => match.bracketType == BracketTypes.grandFinalsReset,
+    );
 
     expect(winnersFinal.nextKey, grandFinal.key);
     expect(winnersFinal.nextSlot, 1);
     expect(winnersFinal.loserNextKey, grandFinal.key);
     expect(winnersFinal.loserNextSlot, 2);
+    expect(grandFinal.nextKey, resetFinal.key);
   });
 
   test('double elimination with byes creates no empty bye matches', () {
@@ -107,6 +111,10 @@ void main() {
     );
     expect(
       specs.where((match) => match.bracketType == BracketTypes.grandFinals),
+      hasLength(1),
+    );
+    expect(
+      specs.where((match) => match.bracketType == BracketTypes.grandFinalsReset),
       hasLength(1),
     );
   });
@@ -142,13 +150,21 @@ void main() {
     }
 
     for (final match in specs) {
-      if (match.bracketType == BracketTypes.grandFinals) {
+      if (match.bracketType == BracketTypes.grandFinalsReset) {
         expect(match.nextKey, isNull);
         expect(match.loserNextKey, isNull);
         continue;
       }
 
-      expectRoute(match, match.nextKey, match.nextSlot, 'winner');
+      if (match.bracketType == BracketTypes.grandFinals) {
+        expect(match.nextKey, isNotNull);
+        expect(
+          specByKey[match.nextKey]!.bracketType,
+          BracketTypes.grandFinalsReset,
+        );
+      } else {
+        expectRoute(match, match.nextKey, match.nextSlot, 'winner');
+      }
 
       if (match.bracketType == BracketTypes.winners) {
         expectRoute(match, match.loserNextKey, match.loserNextSlot, 'loser');

@@ -123,7 +123,12 @@ class MatchProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> updateScore(String matchId, int score1, int score2) async {
+  Future<void> updateScore(
+    String matchId,
+    int score1,
+    int score2, {
+    bool allowCompletedEdit = false,
+  }) async {
     if (score1 < 0 || score2 < 0) {
       throw ArgumentError('Scores cannot be negative');
     }
@@ -131,6 +136,16 @@ class MatchProvider extends ChangeNotifier {
     final match = _findMatch(matchId);
     if (match == null) {
       throw StateError('Match not found');
+    }
+    if (match.status == MatchStatus.completed && allowCompletedEdit) {
+      await completeMatch(
+        matchId,
+        score1,
+        score2,
+        null,
+        allowCompletedEdit: true,
+      );
+      return;
     }
     if (match.status == MatchStatus.completed) {
       throw StateError('Completed matches cannot be edited');
@@ -163,8 +178,9 @@ class MatchProvider extends ChangeNotifier {
     String matchId,
     int score1,
     int score2,
-    String? winnerId,
-  ) async {
+    String? winnerId, {
+    bool allowCompletedEdit = false,
+  }) async {
     if (score1 < 0 || score2 < 0) {
       throw ArgumentError('Scores cannot be negative');
     }
@@ -173,7 +189,7 @@ class MatchProvider extends ChangeNotifier {
     if (match == null) {
       throw StateError('Match not found');
     }
-    if (match.status == MatchStatus.completed) {
+    if (match.status == MatchStatus.completed && !allowCompletedEdit) {
       throw StateError('This match is already completed');
     }
     if (match.team1Id == null || match.team2Id == null) {
@@ -195,6 +211,14 @@ class MatchProvider extends ChangeNotifier {
           winnerId != resolvedWinnerId) {
         throw ArgumentError('Winner does not match the submitted score');
       }
+    }
+
+    if (match.status == MatchStatus.completed &&
+        match.winnerId != resolvedWinnerId &&
+        _hasLockedDownstream(match)) {
+      throw StateError(
+        'This result feeds into a match that has already started or finished',
+      );
     }
 
     final updates = <String, Map<String, dynamic>>{
@@ -221,13 +245,22 @@ class MatchProvider extends ChangeNotifier {
         throw StateError('Match teams are incomplete');
       }
 
-      _applyRouteUpdate(
-        updates,
-        targetMatchId: match.nextMatchId,
-        targetSlot: match.nextMatchSlot,
-        teamId: resolvedWinnerId,
-        teamName: winnerName,
-      );
+      if (match.bracketType == BracketTypes.grandFinals &&
+          match.nextMatchId != null) {
+        _applyGrandFinalResetUpdate(
+          updates,
+          match: match,
+          winnerId: resolvedWinnerId,
+        );
+      } else {
+        _applyRouteUpdate(
+          updates,
+          targetMatchId: match.nextMatchId,
+          targetSlot: match.nextMatchSlot,
+          teamId: resolvedWinnerId,
+          teamName: winnerName,
+        );
+      }
 
       if (match.bracketType == BracketTypes.winners) {
         _applyRouteUpdate(
@@ -262,8 +295,9 @@ class MatchProvider extends ChangeNotifier {
     if (match == null) {
       throw StateError('Match not found');
     }
-    if (match.status == MatchStatus.completed) {
-      throw StateError('Completed matches cannot be started');
+    if (match.status == MatchStatus.completed ||
+        match.status == MatchStatus.cancelled) {
+      throw StateError('This match cannot be started');
     }
     if (match.team1Id == null || match.team2Id == null) {
       throw StateError('Both teams must be assigned before starting a match');
@@ -290,12 +324,17 @@ class MatchProvider extends ChangeNotifier {
   }
 
   Future<void> deleteMatch(String id) async {
+    final match = _findMatch(id);
     final previousMatches = List<MatchModel>.of(_matches);
     _matches = _matches.where((match) => match.id != id).toList();
     notifyListeners();
 
     try {
-      await _service.deleteMatch(id);
+      if (match == null) {
+        await _service.deleteMatch(id);
+      } else {
+        await _service.deleteMatchAndSyncBracket(match);
+      }
       _error = null;
     } catch (e) {
       _matches = previousMatches;
@@ -307,6 +346,56 @@ class MatchProvider extends ChangeNotifier {
 
   MatchModel? _findMatch(String matchId) {
     return _matches.where((match) => match.id == matchId).firstOrNull;
+  }
+
+  bool _hasLockedDownstream(MatchModel match) {
+    final targetIds = {
+      if (match.nextMatchId != null) match.nextMatchId!,
+      if (match.loserNextMatchId != null) match.loserNextMatchId!,
+    };
+    for (final targetId in targetIds) {
+      final target = _findMatch(targetId);
+      if (target == null) continue;
+      if (target.status == MatchStatus.live ||
+          target.status == MatchStatus.completed) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _applyGrandFinalResetUpdate(
+    Map<String, Map<String, dynamic>> updates, {
+    required MatchModel match,
+    required String winnerId,
+  }) {
+    final targetMatchId = match.nextMatchId;
+    if (targetMatchId == null) return;
+
+    final resetUpdate = updates.putIfAbsent(targetMatchId, () => {});
+    if (winnerId == match.team2Id) {
+      resetUpdate.addAll({
+        'team1Id': match.team1Id,
+        'team1Name': match.team1Name,
+        'team2Id': match.team2Id,
+        'team2Name': match.team2Name,
+        'score1': 0,
+        'score2': 0,
+        'winnerId': null,
+        'status': MatchStatus.scheduled.name,
+      });
+    } else {
+      resetUpdate.addAll({
+        'team1Id': null,
+        'team1Name': 'Not Needed',
+        'team2Id': null,
+        'team2Name': 'Not Needed',
+        'score1': 0,
+        'score2': 0,
+        'winnerId': null,
+        'status': MatchStatus.cancelled.name,
+      });
+    }
   }
 
   void _applyRouteUpdate(

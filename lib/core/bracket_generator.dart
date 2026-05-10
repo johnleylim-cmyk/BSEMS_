@@ -6,6 +6,7 @@ class BracketTypes {
   static const winners = 'winners';
   static const losers = 'losers';
   static const grandFinals = 'grand_finals';
+  static const grandFinalsReset = 'grand_finals_reset';
   static const roundRobin = 'round_robin';
 }
 
@@ -287,7 +288,7 @@ class BracketGenerator {
         ? matchNumber
         : specs.map((spec) => spec.matchNumber).reduce(max) + 1;
     final finalsRound = specs.map((spec) => spec.round).reduce(max) + 1;
-    _createMatchFromFlows(
+    final grandFinal = _createMatchFromFlows(
       key: 'grand-finals',
       round: finalsRound,
       matchNumber: matchNumber,
@@ -299,6 +300,19 @@ class BracketGenerator {
       team1Label: 'Winners Champion',
       team2Label: 'Losers Champion',
     );
+    matchNumber++;
+
+    final resetFinal = addSpec(BracketMatchSpec(
+      key: 'grand-finals-reset',
+      round: finalsRound + 1,
+      matchNumber: matchNumber,
+      bracketType: BracketTypes.grandFinalsReset,
+      team1Name: 'If Needed',
+      team2Name: 'If Needed',
+      status: MatchStatus.scheduled,
+    ));
+    grandFinal.nextKey = resetFinal.key;
+    grandFinal.nextSlot = 1;
 
     _applyAutoAdvancements(specs);
     return specs;
