@@ -1,0 +1,11 @@
+RewriteEngine On
+
+# If the requested file or directory doesn't exist, serve index.html
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ /index.html [L,QSA]
+
+# Set correct MIME types for Flutter web assets
+AddType application/javascript .js
+AddType application/json .json
+AddType application/wasm .wasm

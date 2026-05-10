@@ -77,16 +77,20 @@ class BracketTreeView extends StatelessWidget {
           );
         }
       } else {
-        // Subsequent rounds: center between their two feeder matches
+        // Subsequent rounds: align parallel rounds, reduce paired rounds.
         final prevRound = sortedRounds[roundIdx - 1];
         final prevMatches = roundMap[prevRound]!;
+        final isParallelRound = roundMatches.length == prevMatches.length;
 
         for (var i = 0; i < roundMatches.length; i++) {
           double y;
           final feeder1Idx = i * 2;
           final feeder2Idx = i * 2 + 1;
 
-          if (feeder1Idx < prevMatches.length &&
+          if (isParallelRound && i < prevMatches.length) {
+            final rect = positions[prevMatches[i].id]!;
+            y = rect.top;
+          } else if (feeder1Idx < prevMatches.length &&
               feeder2Idx < prevMatches.length) {
             // Center between two feeder matches
             final rect1 = positions[prevMatches[feeder1Idx].id]!;
@@ -109,32 +113,18 @@ class BracketTreeView extends StatelessWidget {
 
     // Compute connector lines data
     final connectors = <_ConnectorLine>[];
-    for (var roundIdx = 1; roundIdx < sortedRounds.length; roundIdx++) {
-      final round = sortedRounds[roundIdx];
-      final prevRound = sortedRounds[roundIdx - 1];
-      final roundMatches = roundMap[round]!;
-      final prevMatches = roundMap[prevRound]!;
+    for (final match in matches) {
+      final nextMatchId = match.nextMatchId;
+      if (nextMatchId == null) continue;
 
-      for (var i = 0; i < roundMatches.length; i++) {
-        final targetRect = positions[roundMatches[i].id]!;
-        final feeder1Idx = i * 2;
-        final feeder2Idx = i * 2 + 1;
+      final srcRect = positions[match.id];
+      final targetRect = positions[nextMatchId];
+      if (srcRect == null || targetRect == null) continue;
 
-        if (feeder1Idx < prevMatches.length) {
-          final srcRect = positions[prevMatches[feeder1Idx].id]!;
-          connectors.add(_ConnectorLine(
-            from: Offset(srcRect.right, srcRect.center.dy),
-            to: Offset(targetRect.left, targetRect.center.dy),
-          ));
-        }
-        if (feeder2Idx < prevMatches.length) {
-          final srcRect = positions[prevMatches[feeder2Idx].id]!;
-          connectors.add(_ConnectorLine(
-            from: Offset(srcRect.right, srcRect.center.dy),
-            to: Offset(targetRect.left, targetRect.center.dy),
-          ));
-        }
-      }
+      connectors.add(_ConnectorLine(
+        from: Offset(srcRect.right, srcRect.center.dy),
+        to: Offset(targetRect.left, targetRect.center.dy),
+      ));
     }
 
     // Adjust total height to fit all positioned cards

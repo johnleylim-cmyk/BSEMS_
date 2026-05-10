@@ -1,16 +1,15 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:image_picker_web/image_picker_web.dart';
 import '../../app/theme.dart';
-import '../../core/constants.dart';
 import '../../core/enums.dart';
 import '../../core/utils.dart';
 import '../../models/athlete_model.dart';
 import '../../providers/athlete_provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/storage_service.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/shimmer_loader.dart';
 import '../../widgets/avatar_badge.dart';
@@ -98,6 +97,27 @@ class _AthletesListScreenState extends State<AthletesListScreen> {
     );
   }
 
+  /// Convert picked image bytes to a base64 data URI string for Firestore storage.
+  /// This avoids requiring Firebase Storage for athlete profile pictures.
+  String _bytesToBase64DataUri(Uint8List bytes) {
+    final base64Str = base64Encode(bytes);
+    return 'data:image/png;base64,$base64Str';
+  }
+
+  /// Returns an image provider for either a base64 data URI or a legacy URL.
+  ImageProvider _imageProviderFromPhoto(String photo) {
+    if (photo.startsWith('data:')) {
+      final commaIndex = photo.indexOf(',');
+      if (commaIndex != -1) {
+        try {
+          final bytes = base64Decode(photo.substring(commaIndex + 1));
+          return MemoryImage(bytes);
+        } catch (_) {}
+      }
+    }
+    return NetworkImage(photo);
+  }
+
   void _showForm(BuildContext context, {AthleteModel? athlete}) {
     final isEdit = athlete != null;
     final firstCtrl = TextEditingController(text: athlete?.firstName ?? '');
@@ -139,11 +159,14 @@ class _AthletesListScreenState extends State<AthletesListScreen> {
                       border: Border.all(color: AppTheme.accentCyan.withValues(alpha: 0.3), width: 2),
                       image: pickedImageBytes != null
                           ? DecorationImage(image: MemoryImage(pickedImageBytes!), fit: BoxFit.cover)
-                          : existingPhotoUrl != null
-                              ? DecorationImage(image: NetworkImage(existingPhotoUrl), fit: BoxFit.cover)
+                          : existingPhotoUrl != null && existingPhotoUrl.isNotEmpty
+                              ? DecorationImage(
+                                  image: _imageProviderFromPhoto(existingPhotoUrl),
+                                  fit: BoxFit.cover,
+                                )
                               : null,
                     ),
-                    child: pickedImageBytes == null && existingPhotoUrl == null
+                    child: pickedImageBytes == null && (existingPhotoUrl == null || existingPhotoUrl.isEmpty)
                         ? const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                             Icon(Icons.camera_alt_outlined, color: AppTheme.accentCyan, size: 22),
                             Text('Photo', style: TextStyle(color: AppTheme.accentCyan, fontSize: 9)),
@@ -187,20 +210,8 @@ class _AthletesListScreenState extends State<AthletesListScreen> {
               final rootContext = context;
               String? photoUrl = existingPhotoUrl;
 
-              // Upload photo if picked
               if (pickedImageBytes != null) {
-                try {
-                  photoUrl = await StorageService().uploadImage(
-                    bytes: pickedImageBytes!,
-                    path: AppConstants.athletePhotosPath,
-                  );
-                } catch (e) {
-                  if (ctx.mounted) {
-                    setDialogState(() => uploading = false);
-                    AppUtils.showError(ctx, 'Photo upload failed: $e');
-                    return;
-                  }
-                }
+                photoUrl = _bytesToBase64DataUri(pickedImageBytes!);
               }
 
 
@@ -256,10 +267,6 @@ class _AthletesListScreenState extends State<AthletesListScreen> {
         ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accentRed), onPressed: () async {
           final athleteProvider = context.read<AthleteProvider>();
           final rootContext = context;
-          // Delete photo if exists
-          if (a.photoUrl != null) {
-            try { await StorageService().deleteImage(a.photoUrl!); } catch (_) {}
-          }
 
           await athleteProvider.deleteAthlete(a.id);
           if (ctx.mounted) {
